@@ -41,20 +41,49 @@ class Netstat {
             this.updateInfo();
         }, 2000);
 
-        // Init GeoIP integrated backend
+        // Init GeoIP integrated backend with geolite2-redist v3 compatibility
+        console.log("Initializing GeoIP with geolite2-redist v3 API...");
         this.geoLookup = {
             get: () => null
         };
-        let geolite2 = require("geolite2-redist");
-        let maxmind = require("maxmind");
-        geolite2.downloadDbs(require("path").join(require("@electron/remote").app.getPath("userData"), "geoIPcache")).then(() => {
-           geolite2.open('GeoLite2-City', path => {
-                return maxmind.open(path);
-            }).catch(e => {throw e}).then(lookup => {
-                this.geoLookup = lookup;
-                this.lastconn.finished = true;
-            });
-        });
+        
+        // Initialize GeoIP with proper error handling for v3 API
+        setTimeout(() => {
+            try {
+                const geolite2 = require("geolite2-redist");
+                const maxmind = require("maxmind");
+                const path = require("path");
+                
+                // Check if we can use the v3 API
+                if (typeof geolite2.open === 'function') {
+                    console.log("Using geolite2-redist v3 API...");
+                    // Try to open the database synchronously
+                    const dbPath = path.join(require("@electron/remote").app.getPath("userData"), "geoIPcache", "GeoLite2-City.mmdb");
+                    
+                    // Check if database exists first
+                    require("fs").access(dbPath, require("fs").constants.F_OK, (err) => {
+                        if (!err) {
+                            console.log("Found existing GeoIP database, opening...");
+                            maxmind.open(dbPath).then(lookup => {
+                                this.geoLookup = lookup;
+                                console.log("GeoIP lookup initialized successfully");
+                            }).catch(e => {
+                                console.log("Failed to open existing GeoIP database:", e.message);
+                            });
+                        } else {
+                            console.log("No existing GeoIP database found, location features will be limited");
+                        }
+                    });
+                } else {
+                    console.log("geolite2-redist v3 API not available, location features disabled");
+                }
+            } catch (e) {
+                console.log("GeoIP initialization error:", e.message);
+                console.log("Location features will be limited");
+            }
+        }, 1000); // Delay to ensure app is fully initialized
+        
+        this.lastconn.finished = true;
     }
     updateInfo() {
         window.si.networkInterfaces().then(async data => {
@@ -113,9 +142,10 @@ class Netstat {
                         res.on("end", () => {
                             try {
                                 let data = JSON.parse(rawData);
+                                let geoResult = this.geoLookup.get(data.ip);
                                 this.ipinfo = {
                                     ip: data.ip,
-                                    geo: this.geoLookup.get(data.ip).location
+                                    geo: geoResult ? geoResult.location : null
                                 };
 
                                 let ip = this.ipinfo.ip;

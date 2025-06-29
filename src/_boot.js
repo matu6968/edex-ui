@@ -192,7 +192,6 @@ function createWindow(settings) {
         backgroundColor: '#000000',
         webPreferences: {
             devTools: true,
-	    enableRemoteModule: true,
             contextIsolation: false,
             backgroundThrottling: false,
             webSecurity: true,
@@ -209,6 +208,9 @@ function createWindow(settings) {
         slashes: true
     }));
 
+    // Enable @electron/remote for this WebContents (required for Electron >= 14.0.0)
+    require('@electron/remote/main').enable(win.webContents);
+    
     signale.complete("Frontend window created!");
     win.show();
     if (!settings.allowWindowed) {

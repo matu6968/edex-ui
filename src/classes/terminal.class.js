@@ -3,11 +3,11 @@ class Terminal {
         if (opts.role === "client") {
             if (!opts.parentId) throw "Missing options";
 
-            this.xTerm = require("xterm").Terminal;
-            const {AttachAddon} = require("xterm-addon-attach");
-            const {FitAddon} = require("xterm-addon-fit");
-            const {LigaturesAddon} = require("xterm-addon-ligatures");
-            const {WebglAddon} = require("xterm-addon-webgl");
+            this.xTerm = require("@xterm/xterm").Terminal;
+            const {AttachAddon} = require("@xterm/addon-attach");
+            const {FitAddon} = require("@xterm/addon-fit");
+            const {LigaturesAddon} = require("@xterm/addon-ligatures");
+            const {WebglAddon} = require("@xterm/addon-webgl");
             this.Ipc = require("electron").ipcRenderer;
 
             this.port = opts.port || 3000;
@@ -102,7 +102,9 @@ class Terminal {
                 rows: 24,
                 cursorBlink: window.theme.terminal.cursorBlink || true,
                 cursorStyle: window.theme.terminal.cursorStyle || "block",
-                allowTransparency: window.theme.terminal.allowTransparency || false,
+                allowTransparency: false, // Disable transparency to fix blue tint in @xterm v5
+                allowProposedApi: true, // Required for @xterm/xterm v5+ addons
+                convertEol: true, // Ensure proper line ending handling
                 fontFamily: window.theme.terminal.fontFamily || "Fira Mono",
                 fontSize: window.theme.terminal.fontSize || window.settings.termFontSize || 15,
                 fontWeight: window.theme.terminal.fontWeight || "normal",
@@ -138,7 +140,8 @@ class Terminal {
             let fitAddon = new FitAddon();
             this.term.loadAddon(fitAddon);
             this.term.open(document.getElementById(opts.parentId));
-            this.term.loadAddon(new WebglAddon());
+            // Disable WebGL addon to fix blue tint issue in @xterm v5
+            // this.term.loadAddon(new WebglAddon());
             let ligaturesAddon = new LigaturesAddon();
             this.term.loadAddon(ligaturesAddon);
             this.term.attachCustomKeyEventHandler(e => {

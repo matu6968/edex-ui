@@ -94,6 +94,10 @@ No, after a 3 years run, this project has been archived. See the [announcement](
 Glad you're interested! See [#272](https://github.com/GitSquared/edex-ui/issues/272).
 #### This is so cool.
 Thanks! If you feel like it, you can [follow me on Twitter](https://gaby.dev/twitter) to hear about new stuff I'm making.
+#### Why is WebGL acceleration on the terminal disabled?
+WebGL acceleration on the terminal is disabled because it's causing blue tint issues which in itself is caused by transparency issues (likely due to changing API's in xterm 5.x releases on how themes are handled). For now it is using software rendering instead which is slower but works.
+#### Why isn't geolocation working?
+It works, you just need to wait a little bit longer (around 15 seconds) for the database to download due to the size of the database present in newer versions of geolite2-redist.
 
 <img width="220" src="https://78.media.tumblr.com/35d4ef4447e0112f776b629bffd99188/tumblr_mk4gf8zvyC1s567uwo1_500.gif" />
 

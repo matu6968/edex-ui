@@ -16,7 +16,23 @@ class Conninfo {
 
         this.current = document.querySelector("#mod_conninfo_innercontainer > h1 > i");
         this.total = document.querySelector("#mod_conninfo_innercontainer > h2 > i");
-        this._pb = require("pretty-bytes");
+        // pretty-bytes v6+ is an ES module
+        this._pb = (() => {
+            try {
+                // Try ES module import for pretty-bytes v6+
+                const prettyBytes = require("pretty-bytes");
+                return prettyBytes.default || prettyBytes;
+            } catch (e) {
+                // Fallback function if pretty-bytes fails
+                return (bytes) => {
+                    if (bytes === 0) return '0 B';
+                    const k = 1024;
+                    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                };
+            }
+        })();
 
         // Init Smoothie
         let TimeSeries = require("smoothie").TimeSeries;

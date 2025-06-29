@@ -59,7 +59,7 @@ if (remote.process.argv.includes("--nointro")) {
 } else {
     window.settings.nointroOverride = false;
 }
-if (electron.remote.process.argv.includes("--nocursor")) {
+if (remote.process.argv.includes("--nocursor")) {
     window.settings.nocursorOverride = true;
 } else {
     window.settings.nocursorOverride = false;
@@ -204,7 +204,7 @@ function initSystemInformationProxy() {
 window.audioManager = new AudioManager();
 
 // See #223
-electron.remote.app.focus();
+remote.app.focus();
 
 let i = 0;
 if (window.settings.nointro || window.settings.nointroOverride) {
@@ -243,7 +243,7 @@ function displayLine() {
 
     switch(true) {
         case i === 2:
-            bootScreen.innerHTML += `eDEX-UI Kernel version ${electron.remote.app.getVersion()} boot at ${Date().toString()}; root:xnu-1699.22.73~1/RELEASE_X86_64`;
+            bootScreen.innerHTML += `eDEX-UI Kernel version ${remote.app.getVersion()} boot at ${Date().toString()}; root:xnu-1699.22.73~1/RELEASE_X86_64`;
         case i === 4:
             setTimeout(displayLine, 500);
             break;
@@ -330,14 +330,22 @@ async function displayTitleScreen() {
 // Returns the user's desired display name
 async function getDisplayName() {
     let user = settings.username || null;
+    console.log("Settings username:", user);
     if (user)
         return user;
 
     try {
-        user = await require("username")();
-    } catch (e) {}
+        // Use the username package for cross-platform compatibility
+        user = await import("username").then(m => m.default());
+        console.log("Username package result:", user);
+    } catch (e) {
+        console.log("Username package failed:", e.message);
+        // Fallback to environment variables if username package fails
+        user = process.env.USER || process.env.USERNAME || process.env.LOGNAME;
+        console.log("Environment fallback:", user);
+    }
 
-    return user;
+    return user || null;
 }
 
 // Create the UI's html structure and initialize the terminal client and the keyboard
@@ -384,12 +392,18 @@ async function initUI() {
 
     let greeter = document.getElementById("main_shell_greeting");
 
+    console.log("Getting display name for greeter...");
     getDisplayName().then(user => {
+        console.log("Display name result for greeter:", user);
         if (user) {
             greeter.innerHTML += `Welcome back, <em>${user}</em>`;
         } else {
             greeter.innerHTML += "Welcome back";
         }
+        console.log("Greeter text set successfully");
+    }).catch(e => {
+        console.error("Error getting display name:", e);
+        greeter.innerHTML += "Welcome back";
     });
 
     greeter.setAttribute("style", "opacity: 1;");
@@ -416,20 +430,36 @@ async function initUI() {
     greeter.remove();
 
     // Initialize modules
+    console.log("Starting module initialization...");
     window.mods = {};
 
-    // Left column
-    window.mods.clock = new Clock("mod_column_left");
-    window.mods.sysinfo = new Sysinfo("mod_column_left");
-    window.mods.hardwareInspector = new HardwareInspector("mod_column_left");
-    window.mods.cpuinfo = new Cpuinfo("mod_column_left");
-    window.mods.ramwatcher = new RAMwatcher("mod_column_left");
-    window.mods.toplist = new Toplist("mod_column_left");
+    try {
+        // Left column
+        console.log("Creating Clock module...");
+        window.mods.clock = new Clock("mod_column_left");
+        console.log("Creating Sysinfo module...");
+        window.mods.sysinfo = new Sysinfo("mod_column_left");
+        console.log("Creating HardwareInspector module...");
+        window.mods.hardwareInspector = new HardwareInspector("mod_column_left");
+        console.log("Creating Cpuinfo module...");
+        window.mods.cpuinfo = new Cpuinfo("mod_column_left");
+        console.log("Creating RAMwatcher module...");
+        window.mods.ramwatcher = new RAMwatcher("mod_column_left");
+        console.log("Creating Toplist module...");
+        window.mods.toplist = new Toplist("mod_column_left");
 
-    // Right column
-    window.mods.netstat = new Netstat("mod_column_right");
-    window.mods.globe = new LocationGlobe("mod_column_right");
-    window.mods.conninfo = new Conninfo("mod_column_right");
+        // Right column
+        console.log("Creating Netstat module...");
+        window.mods.netstat = new Netstat("mod_column_right");
+        console.log("Creating LocationGlobe module...");
+        window.mods.globe = new LocationGlobe("mod_column_right");
+        console.log("Creating Conninfo module...");
+        window.mods.conninfo = new Conninfo("mod_column_right");
+        console.log("All modules initialized successfully!");
+    } catch (e) {
+        console.error("Module initialization failed:", e);
+        throw e;
+    }
 
     // Fade-in animations
     document.querySelectorAll(".mod_column").forEach(e => {
@@ -472,22 +502,33 @@ async function initUI() {
             <pre id="terminal3"></pre>
             <pre id="terminal4"></pre>
         </div>`;
-    window.term = {
-        0: new Terminal({
-            role: "client",
-            parentId: "terminal0",
-            port: window.settings.port || 3000
-        })
-    };
-    window.currentTerm = 0;
-    window.term[0].onprocesschange = p => {
-        document.getElementById("shell_tab0").innerHTML = `<p>MAIN - ${p}</p>`;
-    };
-    // Prevent losing hardware keyboard focus on the terminal when using touch keyboard
-    window.onmouseup = e => {
-        if (window.keyboard.linkedToTerm) window.term[window.currentTerm].term.focus();
-    };
-    window.term[0].term.writeln("\033[1m"+`Welcome to eDEX-UI v${electron.remote.app.getVersion()} - Electron v${process.versions.electron}`+"\033[0m");
+    try {
+        console.log("Creating terminal instance...");
+        window.term = {
+            0: new Terminal({
+                role: "client",
+                parentId: "terminal0",
+                port: window.settings.port || 3000
+            })
+        };
+        console.log("Terminal instance created successfully");
+        
+        window.currentTerm = 0;
+        window.term[0].onprocesschange = p => {
+            document.getElementById("shell_tab0").innerHTML = `<p>MAIN - ${p}</p>`;
+        };
+        // Prevent losing hardware keyboard focus on the terminal when using touch keyboard
+        window.onmouseup = e => {
+            if (window.keyboard.linkedToTerm) window.term[window.currentTerm].term.focus();
+        };
+        
+        console.log("Writing welcome message...");
+        window.term[0].term.writeln("\033[1m"+`Welcome to eDEX-UI v${remote.app.getVersion()} - Electron v${process.versions.electron}`+"\033[0m");
+        console.log("Welcome message written successfully");
+    } catch (e) {
+        console.error("Terminal initialization failed:", e);
+        throw e;
+    }
 
     await _delay(100);
 
@@ -603,7 +644,7 @@ window.openSettings = async () => {
         if (th === window.settings.theme) return;
         themes += `<option>${th}</option>`;
     });
-    for (let i = 0; i < electron.remote.screen.getAllDisplays().length; i++) {
+    for (let i = 0; i < remote.screen.getAllDisplays().length; i++) {
         if (i !== window.settings.monitor) monitors += `<option>${i}</option>`;
     }
     let nets = await window.si.networkInterfaces();
@@ -616,7 +657,7 @@ window.openSettings = async () => {
 
     new Modal({
         type: "custom",
-        title: `Settings <i>(v${electron.remote.app.getVersion()})</i>`,
+        title: `Settings <i>(v${remote.app.getVersion()})</i>`,
         html: `<table id="settingsEditor">
                     <tr>
                         <th>Key</th>
@@ -802,7 +843,7 @@ window.openSettings = async () => {
             {label: "Open in External Editor", action:`electron.shell.openPath('${settingsFile}');electronWin.minimize();`},
             {label: "Save to Disk", action: "window.writeSettingsFile()"},
             {label: "Reload UI", action: "window.location.reload(true);"},
-            {label: "Restart eDEX", action: "electron.remote.app.relaunch();electron.remote.app.quit();"}
+            {label: "Restart eDEX", action: "remote.app.relaunch();remote.app.quit();"}
         ]
     }, () => {
         // Link the keyboard back to the terminal
@@ -916,7 +957,7 @@ window.openShortcutsHelp = () => {
     window.keyboard.detach();
     new Modal({
         type: "custom",
-        title: `Available Keyboard Shortcuts <i>(v${electron.remote.app.getVersion()})</i>`,
+        title: `Available Keyboard Shortcuts <i>(v${remote.app.getVersion()})</i>`,
         html: `<h5>Using either the on-screen or a physical keyboard, you can use the following shortcuts:</h5>
                 <details open id="shortcutsHelpAccordeon1">
                     <summary>Emulator shortcuts</summary>
@@ -1032,7 +1073,7 @@ window.useAppShortcut = action => {
             window.keyboard.togglePasswordMode();
             return true;
         case "DEV_DEBUG":
-            electron.remote.getCurrentWindow().webContents.toggleDevTools();
+            remote.getCurrentWindow().webContents.toggleDevTools();
             return true;
         case "DEV_RELOAD":
             window.location.reload(true);
@@ -1044,7 +1085,7 @@ window.useAppShortcut = action => {
 };
 
 // Global keyboard shortcuts
-const globalShortcut = electron.remote.globalShortcut;
+const globalShortcut = remote.globalShortcut;
 globalShortcut.unregisterAll();
 
 window.registerKeyboardShortcuts = () => {
@@ -1106,7 +1147,7 @@ document.addEventListener("keydown", e => {
 // Fix #265
 window.addEventListener("keyup", e => {
     if (require("os").platform() === "win32" && e.key === "F4" && e.altKey === true) {
-        electron.remote.app.quit();
+        remote.app.quit();
     }
 });
 
@@ -1124,12 +1165,12 @@ window.onresize = () => {
 
 // See #413
 window.resizeTimeout = null;
-let electronWin = electron.remote.getCurrentWindow();
+let electronWin = remote.getCurrentWindow();
 electronWin.on("resize", () => {
     if (settings.keepGeometry === false) return;
     clearTimeout(window.resizeTimeout);
     window.resizeTimeout = setTimeout(() => {
-        let win = electron.remote.getCurrentWindow();
+        let win = remote.getCurrentWindow();
         if (win.isFullScreen()) return false;
         if (win.isMaximized()) {
             win.unmaximize();
@@ -1148,5 +1189,5 @@ electronWin.on("resize", () => {
 });
 
 electronWin.on("leave-full-screen", () => {
-    electron.remote.getCurrentWindow().setSize(960, 540);
+    remote.getCurrentWindow().setSize(960, 540);
 });

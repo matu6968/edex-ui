@@ -32,11 +32,22 @@ if (cluster.isMaster) {
         let selectedID = lastID+1;
         if (selectedID > numCPUs-1) selectedID = 0;
 
-        cluster.workers[workers[selectedID]].send(JSON.stringify({
-            id,
-            type,
-            arg
-        }));
+        // Check if worker is still connected before sending
+        const worker = cluster.workers[workers[selectedID]];
+        if (worker && !worker.isDead()) {
+            try {
+                worker.send(JSON.stringify({
+                    id,
+                    type,
+                    arg
+                }));
+            } catch (err) {
+                // Worker has disconnected, ignore EPIPE errors
+                if (err.code !== 'EPIPE') {
+                    console.error('Master send error:', err);
+                }
+            }
+        }
 
         lastID = selectedID;
     }
@@ -50,8 +61,12 @@ if (cluster.isMaster) {
 
         if (args.length > 1 || workers.length <= 0) {
             si[type](...args).then(res => {
-                if (e.sender) {
-                    e.sender.send("systeminformation-reply-"+id, res);
+                try {
+                    if (e.sender && !e.sender.isDestroyed()) {
+                        e.sender.send("systeminformation-reply-"+id, res);
+                    }
+                } catch(err) {
+                    // Frame was disposed, ignore silently
                 }
             });
         } else {
@@ -63,12 +78,13 @@ if (cluster.isMaster) {
     cluster.on("message", (worker, msg) => {
         msg = JSON.parse(msg);
         try {
-            if (!queue[msg.id].isDestroyed()) {
+            if (queue[msg.id] && !queue[msg.id].isDestroyed()) {
                 queue[msg.id].send("systeminformation-reply-"+msg.id, msg.res);
                 delete queue[msg.id];
             }
         } catch(e) {
-            // Window has been closed, ignore.
+            // Window has been closed or frame was disposed, ignore silently.
+            delete queue[msg.id];
         }
     });
 } else if (cluster.isWorker) {
@@ -80,10 +96,39 @@ if (cluster.isMaster) {
     process.on("message", msg => {
         msg = JSON.parse(msg);
         si[msg.type](msg.arg).then(res => {
-            process.send(JSON.stringify({
-                id: msg.id,
-                res
-            }));
+            // Check if parent process is still available before sending
+            if (process.connected) {
+                try {
+                    process.send(JSON.stringify({
+                        id: msg.id,
+                        res
+                    }));
+                } catch (err) {
+                    // Parent process has disconnected, ignore EPIPE errors
+                    if (err.code !== 'EPIPE') {
+                        console.error('Worker send error:', err);
+                    }
+                }
+            }
+        }).catch(err => {
+            // Handle si call errors gracefully
+            console.warn('Systeminformation call failed:', err.message);
         });
+    });
+
+    // Handle graceful shutdown
+    process.on('disconnect', () => {
+        // Parent process is shutting down, stop accepting new work
+        process.exit(0);
+    });
+
+    process.on('SIGTERM', () => {
+        // Graceful termination
+        process.exit(0);
+    });
+
+    process.on('SIGINT', () => {
+        // Handle Ctrl+C gracefully
+        process.exit(0);
     });
 }

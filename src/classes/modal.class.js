@@ -7,7 +7,7 @@ class Modal {
         this.type = options.type;
         this.id = require("nanoid").nanoid();
         while (typeof window.modals[this.id] !== "undefined") {
-            this.id = require("nanoid")();
+            this.id = require("nanoid").nanoid();
         }
         this.title = options.title || options.type || "Modal window";
         this.message = options.message || "Lorem ipsum dolor sit amet.";
