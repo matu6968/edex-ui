@@ -218,6 +218,8 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 22
+    - name: Fix npm cache permissions
+      run: sudo chown -R $(id -u):$(id -g) ~/.npm
     - name: Setup npm
       run: sudo npm i -g npm@latest
     - name: npm install
