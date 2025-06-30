@@ -523,7 +523,7 @@ async function initUI() {
         };
         
         console.log("Writing welcome message...");
-        window.term[0].term.writeln("\033[1m"+`Welcome to eDEX-UI v${remote.app.getVersion()} - Electron v${process.versions.electron}`+"\033[0m");
+        window.term[0].term.writeln("\x1b[1m"+`Welcome to eDEX-UI v${remote.app.getVersion()} - Electron v${process.versions.electron}`+"\x1b[0m");
         console.log("Welcome message written successfully");
     } catch (e) {
         console.error("Terminal initialization failed:", e);
@@ -543,11 +543,20 @@ async function initUI() {
     // Resend terminal CWD to fsDisp if we're hot reloading
     if (window.performance.navigation.type === 1) {
         window.term[window.currentTerm].resendCWD();
+        // Restore UI state after reload
+        setTimeout(() => {
+            window.restoreUIState();
+        }, 1500);
     }
 
     await _delay(200);
 
     window.updateCheck = new UpdateChecker();
+    
+    // Always restore UI state after initialization
+    setTimeout(() => {
+        window.restoreUIState();
+    }, 2000);
 }
 
 window.themeChanger = theme => {
@@ -587,6 +596,9 @@ window.focusShellTab = number => {
         window.term[number].resendCWD();
 
         window.fsDisp.followTab();
+        
+        // Save UI state when switching tabs
+        window.saveUIState();
     } else if (number > 0 && number <= 4 && window.term[number] !== null && typeof window.term[number] !== "object") {
         window.term[number] = null;
 
@@ -611,6 +623,8 @@ window.focusShellTab = number => {
                     window.term[number].term.dispose();
                     delete window.term[number];
                     window.useAppShortcut("PREVIOUS_TAB");
+                    // Save UI state when closing tabs
+                    window.saveUIState();
                 };
 
                 window.term[number].onprocesschange = p => {
@@ -620,6 +634,8 @@ window.focusShellTab = number => {
                 document.getElementById("shell_tab"+number).innerHTML = `<p>::${port}</p>`;
                 setTimeout(() => {
                     window.focusShellTab(number);
+                    // Save UI state when new tabs are created
+                    window.saveUIState();
                 }, 500);
             }
         });
@@ -910,6 +926,46 @@ window.toggleFullScreen = () => {
     fs.writeFileSync(lastWindowStateFile, JSON.stringify(window.lastWindowState, "", 4));
 };
 
+// Save UI state including terminal tabs
+window.saveUIState = () => {
+    let terminalState = {
+        currentTerm: window.currentTerm || 0,
+        openTabs: []
+    };
+    
+    // Save which tabs are open
+    for (let i = 0; i <= 4; i++) {
+        if (window.term[i] && typeof window.term[i] === "object") {
+            terminalState.openTabs.push(i);
+        }
+    }
+    
+    window.lastWindowState["terminalState"] = terminalState;
+    fs.writeFileSync(lastWindowStateFile, JSON.stringify(window.lastWindowState, "", 4));
+};
+
+// Restore UI state including terminal tabs
+window.restoreUIState = () => {
+    if (window.lastWindowState.terminalState) {
+        let terminalState = window.lastWindowState.terminalState;
+        
+        // Restore additional tabs that were open
+        terminalState.openTabs.forEach(tabNumber => {
+            if (tabNumber > 0 && !window.term[tabNumber]) {
+                // Trigger tab creation
+                window.focusShellTab(tabNumber);
+            }
+        });
+        
+        // Restore the active tab after a short delay to ensure tabs are created
+        setTimeout(() => {
+            if (terminalState.currentTerm !== undefined && window.term[terminalState.currentTerm]) {
+                window.focusShellTab(terminalState.currentTerm);
+            }
+        }, 1000);
+    }
+};
+
 // Display available keyboard shortcuts and custom shortcuts helper
 window.openShortcutsHelp = () => {
     if (document.getElementById("settingsEditor")) return;
@@ -1086,6 +1142,11 @@ window.useAppShortcut = action => {
 
 // Global keyboard shortcuts
 const globalShortcut = remote.globalShortcut;
+
+// Save UI state before window closes or reloads
+window.addEventListener('beforeunload', () => {
+    window.saveUIState();
+});
 globalShortcut.unregisterAll();
 
 window.registerKeyboardShortcuts = () => {

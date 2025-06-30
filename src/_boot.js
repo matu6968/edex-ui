@@ -53,6 +53,13 @@ const innerKblayoutsDir = path.join(__dirname, "assets/kb_layouts");
 const fontsDir = path.join(electron.app.getPath("userData"), "fonts");
 const innerFontsDir = path.join(__dirname, "assets/fonts");
 
+// Store proxy settings for external HTTP requests before removing them for websockets
+// See #222 in the original repository - we need to remove proxy vars for internal websockets but keep them for external requests
+global.originalProxySettings = {
+    http_proxy: process.env.http_proxy,
+    https_proxy: process.env.https_proxy
+};
+
 // Unset proxy env variables to avoid connection problems on the internal websockets
 // See #222
 if (process.env.http_proxy) delete process.env.http_proxy;
@@ -120,7 +127,11 @@ if (!fs.existsSync(shortcutsFile)) {
 //Create default window state file
 if(!fs.existsSync(lastWindowStateFile)) {
     fs.writeFileSync(lastWindowStateFile, JSON.stringify({
-        useFullscreen: true
+        useFullscreen: true,
+        terminalState: {
+            currentTerm: 0,
+            openTabs: [0]
+        }
     }, "", 4));
     signale.info(`Default last window state written to ${lastWindowStateFile}`);
 }

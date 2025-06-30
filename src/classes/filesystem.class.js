@@ -429,19 +429,20 @@ class FilesystemDisplay {
                         type = "eDEX-UI keyboards folder";
                         break;
                     default:
-                        let iconName = this.fileIconsMatcher(e.name);
-                        icon = this.icons[iconName];
-                        if (typeof icon === "undefined") {
-                            if (e.type === "file") icon = this.icons.file;
-                            if (e.type === "dir") {
-                                icon = this.icons.dir;
-                                type = "folder";
-                            }
-                            if (typeof icon === "undefined") icon = this.icons.other;
-                        } else if (e.category !== "dir") {
-                            type = iconName.replace("icon-", "");
+                        if (e.category === "dir") {
+                            // For directories, use default folder icon
+                            icon = this.icons.dir;
+                            type = "folder";
                         } else {
-                            type = "special folder";
+                            // For files, try to match icon based on filename/extension
+                            let iconName = this.fileIconsMatcher(e.name);
+                            icon = this.icons[iconName];
+                            if (typeof icon === "undefined") {
+                                if (e.type === "file") icon = this.icons.file;
+                                if (typeof icon === "undefined") icon = this.icons.other;
+                            } else {
+                                type = iconName.replace("icon-", "");
+                            }
                         }
                         break;
                 }

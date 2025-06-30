@@ -13,14 +13,23 @@ class UpdateChecker {
             electron.ipcRenderer.send("log", "debug", `Error: ${e}`);
         };
 
-        https.get({
+        // Create request options with proxy support
+        const requestOptions = {
             protocol: "https:",
             host: "api.github.com",
-            path: "/repos/GitSquared/edex-ui/releases/latest",
+            path: "/repos/matu6968/edex-ui/releases/latest",
             headers: {
                 "User-Agent": "eDEX-UI UpdateChecker"
             }
-        }, res => {
+        };
+
+        // Add proxy agent if available
+        const agent = this._createProxyAgent();
+        if (agent) {
+            requestOptions.agent = agent;
+        }
+
+        https.get(requestOptions, res => {
             switch(res.statusCode) {
                 case 200:
                     break;
@@ -65,6 +74,31 @@ class UpdateChecker {
             });
         }).on('error', e => {
             this._fail(e);
+        });
+    }
+
+    _createProxyAgent() {
+        const https = require("https");
+        
+        // Check if we have stored proxy settings from boot.js
+        const proxySettings = global.originalProxySettings || {};
+        const httpsProxy = proxySettings.https_proxy || proxySettings.http_proxy;
+        
+        if (httpsProxy) {
+            try {
+                // Try to use https-proxy-agent if available (it might be installed as a dependency)
+                const HttpsProxyAgent = require("https-proxy-agent");
+                console.log(`UpdateChecker using HTTPS proxy: ${httpsProxy}`);
+                return new HttpsProxyAgent(httpsProxy);
+            } catch (e) {
+                console.log("https-proxy-agent not available for UpdateChecker, falling back to direct connection");
+            }
+        }
+        
+        // Fallback to regular HTTPS agent
+        return new https.Agent({
+            keepAlive: false,
+            maxSockets: 10
         });
     }
 }

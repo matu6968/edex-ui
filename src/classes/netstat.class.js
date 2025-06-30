@@ -30,10 +30,8 @@ class Netstat {
         this.failedAttempts = {};
         this.runsBeforeGeoIPUpdate = 0;
 
-        this._httpsAgent = new require("https").Agent({
-            keepAlive: false,
-            maxSockets: 10
-        });
+        // Create HTTPS agent with proxy support
+        this._httpsAgent = this._createProxyAgent();
 
         // Init updaters
         this.updateInfo();
@@ -84,6 +82,31 @@ class Netstat {
         }, 1000); // Delay to ensure app is fully initialized
         
         this.lastconn.finished = true;
+    }
+
+    _createProxyAgent() {
+        const https = require("https");
+        
+        // Check if we have stored proxy settings from boot.js
+        const proxySettings = global.originalProxySettings || {};
+        const httpsProxy = proxySettings.https_proxy || proxySettings.http_proxy;
+        
+        if (httpsProxy) {
+            try {
+                // Try to use https-proxy-agent if available (it might be installed as a dependency)
+                const HttpsProxyAgent = require("https-proxy-agent");
+                console.log(`Using HTTPS proxy: ${httpsProxy}`);
+                return new HttpsProxyAgent(httpsProxy);
+            } catch (e) {
+                console.log("https-proxy-agent not available, falling back to direct connection");
+            }
+        }
+        
+        // Fallback to regular HTTPS agent
+        return new https.Agent({
+            keepAlive: false,
+            maxSockets: 10
+        });
     }
     updateInfo() {
         window.si.networkInterfaces().then(async data => {

@@ -198,8 +198,17 @@ Object.keys(atomConfig.directoryIcons).forEach(key => {
         fileIconsMatchScript += `    if (${config.match}.test(filename)) { return "${config.icon}"; }\n`;
 
         if (config.alias) {
-            if (typeof config.alias === "string") config.alias = new RegExp(config.alias.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
-            fileIconsMatchScript += `    if (${config.alias}.test(filename)) { return "${config.icon}"; }\n`;
+            if (Array.isArray(config.alias)) {
+                config.alias.forEach(aliasItem => {
+                    if (typeof aliasItem === "string") {
+                        let aliasRegex = new RegExp(aliasItem.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+                        fileIconsMatchScript += `    if (${aliasRegex}.test(filename)) { return "${config.icon}"; }\n`;
+                    }
+                });
+            } else if (typeof config.alias === "string") {
+                config.alias = new RegExp(config.alias.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+                fileIconsMatchScript += `    if (${config.alias}.test(filename)) { return "${config.icon}"; }\n`;
+            }
         }
     }
 });
@@ -217,8 +226,17 @@ Object.keys(atomConfig.fileIcons).forEach(key => {
         fileIconsMatchScript += `    if (${config.match}.test(filename)) { return "${config.icon}"; }\n`;
 
         if (config.alias) {
-            if (typeof config.alias === "string") config.alias = new RegExp(config.alias.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
-            fileIconsMatchScript += `    if (${config.alias}.test(filename)) { return "${config.icon}"; }\n`;
+            if (Array.isArray(config.alias)) {
+                config.alias.forEach(aliasItem => {
+                    if (typeof aliasItem === "string") {
+                        let aliasRegex = new RegExp(aliasItem.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+                        fileIconsMatchScript += `    if (${aliasRegex}.test(filename)) { return "${config.icon}"; }\n`;
+                    }
+                });
+            } else if (typeof config.alias === "string") {
+                config.alias = new RegExp(config.alias.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+                fileIconsMatchScript += `    if (${config.alias}.test(filename)) { return "${config.icon}"; }\n`;
+            }
         }
     }
 });

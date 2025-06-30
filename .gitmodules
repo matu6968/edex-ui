@@ -15,4 +15,4 @@
 	url = https://github.com/FortAwesome/Font-Awesome.git
 [submodule "file-icons/bytesize-icons"]
 	path = file-icons/bytesize-icons
-	url = git@github.com:danklammer/bytesize-icons.git
+	url = https://github.com/danklammer/bytesize-icons.git
