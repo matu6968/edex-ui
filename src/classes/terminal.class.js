@@ -464,7 +464,11 @@ class Terminal {
                     this.ondisconnected(code, reason);
                 });
                 ws.on("message", msg => {
-                    this.tty.write(msg);
+                    if (typeof msg === "string" && /^[\x20-\x7E]*$/.test(msg)) { // Allow only printable ASCII characters
+                        this.tty.write(msg);
+                    } else {
+                        console.warn("Received invalid or potentially unsafe message:", msg);
+                    }
                 });
                 this.tty.onData(data => {
                     this._nextTickUpdateTtyCWD = true;
