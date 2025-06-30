@@ -31,7 +31,7 @@ jobs:
     - name: Setup npm
       run: sudo npm i -g npm@latest
     - name: Install build deps
-      run: npm install
+      run: npm install --no-optional
     - name: Run prebuild script
       run: npm run prebuild-linux
     - name: Build for x64
@@ -69,14 +69,26 @@ jobs:
         # https://github.com/electron/get#how-it-works
         path: ~/.cache/electron
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-    - name: Run prebuild outside of QEMU emulator
-      run: sudo npm i -g npm@latest && npm install && rsync -a --info=progress2 src/ prebuild-src --exclude node_modules && node prebuild-minify.js && rm -rf node_modules
-    - name: Build for arm32v7 (aka armv7l)
-      uses: docker://arm32v7/node:22-bookworm
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
       with:
-        args: bash -c "npm i -g npm@latest && npm install && ./node_modules/.bin/electron-builder build -l --armv7l"
+        node-version: 22
+    - name: Setup npm and install cross-compilation tools
+      run: |
+        sudo npm i -g npm@latest
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+        npm install --no-optional
+        npm run prebuild-linux
+    - name: Build for arm32v7 (aka armv7l)
+      run: ./node_modules/.bin/electron-builder build -l --armv7l
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CC: arm-linux-gnueabihf-gcc
+        CXX: arm-linux-gnueabihf-g++
+        npm_config_target_platform: linux
+        npm_config_target_arch: arm
+        npm_config_cache: /tmp/.npm
     - uses: actions/upload-artifact@v4
       with:
         name: Linux-arm32-AppImage
@@ -108,14 +120,26 @@ jobs:
         # https://github.com/electron/get#how-it-works
         path: ~/.cache/electron
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-    - name: Run prebuild outside of QEMU emulator
-      run: sudo npm i -g npm@latest && npm install && rsync -a --info=progress2 src/ prebuild-src --exclude node_modules && node prebuild-minify.js && rm -rf node_modules
-    - name: Build for arm64 (aka arm64v8)
-      uses: docker://arm64v8/node:22-bookworm
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
       with:
-        args: bash -c "npm i -g npm@latest && npm install && ./node_modules/.bin/electron-builder build -l --arm64"
+        node-version: 22
+    - name: Setup npm and install cross-compilation tools
+      run: |
+        sudo npm i -g npm@latest
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        npm install --no-optional
+        npm run prebuild-linux
+    - name: Build for arm64 (aka arm64v8)
+      run: ./node_modules/.bin/electron-builder build -l --arm64
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CC: aarch64-linux-gnu-gcc
+        CXX: aarch64-linux-gnu-g++
+        npm_config_target_platform: linux
+        npm_config_target_arch: arm64
+        npm_config_cache: /tmp/.npm
     - uses: actions/upload-artifact@v4
       with:
         name: Linux-arm64-AppImage
@@ -149,8 +173,16 @@ jobs:
         node-version: 22
     - name: Setup npm
       run: npm i -g npm@latest
+    - name: Setup Python for node-gyp
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Setup MSVC
+      uses: microsoft/setup-msbuild@v2
     - name: npm install
-      run: npm install
+      run: npm install --no-optional
+      env:
+        npm_config_msvs_version: 2022
     - name: npm build
       run: npm run build-windows
       env:
@@ -189,7 +221,9 @@ jobs:
     - name: Setup npm
       run: sudo npm i -g npm@latest
     - name: npm install
-      run: npm install
+      run: npm install --no-optional
+      env:
+        npm_config_cache: ~/.npm
     - name: npm build
       run: npm run build-darwin
       env:
