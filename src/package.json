@@ -32,7 +32,7 @@
     "mime-types": "^2.1.35",
     "nanoid": "^5.1.5",
     "node-pty": "^1.0.0",
-    "pdfjs-dist": "^5.3.31",
+    "pdfjs-dist": "^4.2.67",
     "pretty-bytes": "^6.1.1",
     "shell-env": "^3.0.1",
     "signale": "^1.4.0",
