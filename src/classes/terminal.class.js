@@ -464,8 +464,12 @@ class Terminal {
                     this.ondisconnected(code, reason);
                 });
                 ws.on("message", msg => {
-                    if (typeof msg === "string" && /^[\x20-\x7E]*$/.test(msg)) { // Allow only printable ASCII characters
-                        this.tty.write(msg);
+                    // Sanitize input to prevent code injection while allowing legitimate terminal input
+                    // Security: All WebSocket messages are validated before being passed to the PTY
+                    if (this._isValidTerminalInput(msg)) {
+                        // Convert Buffer to string if needed for PTY compatibility
+                        const sanitizedMsg = Buffer.isBuffer(msg) ? msg.toString('utf8') : msg;
+                        this.tty.write(sanitizedMsg);
                     } else {
                         console.warn("Received invalid or potentially unsafe message:", msg);
                     }
@@ -484,6 +488,88 @@ class Terminal {
             this.close = () => {
                 this.tty.kill();
                 this._closed = true;
+            };
+
+            /**
+             * Validate terminal input to prevent code injection while allowing legitimate terminal operations
+             * This function sanitizes WebSocket messages before passing them to the PTY
+             * 
+             * Security measures:
+             * - Validates input type and length
+             * - Allows printable characters and essential control characters
+             * - Blocks null bytes and suspicious escape sequences
+             * - Prevents potential DoS attacks with length limits
+             * 
+             * @param {string|Buffer} msg - The message from WebSocket
+             * @returns {boolean} - True if input is safe for terminal use
+             */
+            this._isValidTerminalInput = (msg) => {
+                // Handle Buffer objects from WebSocket
+                if (Buffer.isBuffer(msg)) {
+                    // Convert buffer to string for validation
+                    try {
+                        msg = msg.toString('utf8');
+                    } catch (e) {
+                        return false;
+                    }
+                }
+
+                // Must be a string at this point
+                if (typeof msg !== "string") {
+                    return false;
+                }
+
+                // Reject empty strings or extremely long inputs (potential DoS)
+                if (msg.length === 0 || msg.length > 8192) {
+                    return false;
+                }
+
+                // Allow legitimate terminal input including:
+                // - Printable ASCII and extended ASCII characters (0x20-0xFF)
+                // - Common control characters used in terminals
+                // - Unicode characters for internationalization
+                const allowedControlChars = [
+                    0x08, // Backspace
+                    0x09, // Tab
+                    0x0A, // Line Feed (LF)
+                    0x0D, // Carriage Return (CR)
+                    0x1B, // Escape (for ANSI sequences)
+                    0x7F  // Delete
+                ];
+
+                for (let i = 0; i < msg.length; i++) {
+                    const charCode = msg.charCodeAt(i);
+                    
+                    // Allow printable characters (space and above)
+                    if (charCode >= 0x20) {
+                        continue;
+                    }
+                    
+                    // Allow specific control characters
+                    if (allowedControlChars.includes(charCode)) {
+                        continue;
+                    }
+                    
+                    // Reject other control characters that could be malicious
+                    return false;
+                }
+
+                // Additional checks for potentially dangerous patterns
+                // Reject null bytes (often used in injection attacks)
+                if (msg.includes('\0')) {
+                    return false;
+                }
+
+                // Reject suspicious escape sequences that could be used for injection
+                // Allow normal ANSI sequences but reject potentially dangerous ones
+                if (msg.includes('\x1b]')) { // OSC (Operating System Command) sequences
+                    return false;
+                }
+                if (msg.includes('\x1b[>')) { // Some potentially dangerous escape sequences
+                    return false;
+                }
+
+                return true;
             };
         } else {
             throw "Unknown purpose";
