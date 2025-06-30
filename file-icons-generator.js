@@ -11,6 +11,7 @@
 
 
 const fs = require("fs");
+const escapeStringRegexp = require("escape-string-regexp");
 const path = require("path");
 const CSON = require("cson-parser");
 
@@ -206,7 +207,8 @@ Object.keys(atomConfig.directoryIcons).forEach(key => {
                     }
                 });
             } else if (typeof config.alias === "string") {
-                config.alias = new RegExp(config.alias.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+                const escapedAlias = escapeStringRegexp(config.alias);
+                config.alias = new RegExp(escapedAlias + "$", "i");
                 fileIconsMatchScript += `    if (${config.alias}.test(filename)) { return "${config.icon}"; }\n`;
             }
         }
@@ -229,12 +231,14 @@ Object.keys(atomConfig.fileIcons).forEach(key => {
             if (Array.isArray(config.alias)) {
                 config.alias.forEach(aliasItem => {
                     if (typeof aliasItem === "string") {
-                        let aliasRegex = new RegExp(aliasItem.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+                        const escapedAliasItem = escapeStringRegexp(aliasItem);
+                        let aliasRegex = new RegExp(escapedAliasItem + "$", "i");
                         fileIconsMatchScript += `    if (${aliasRegex}.test(filename)) { return "${config.icon}"; }\n`;
                     }
                 });
             } else if (typeof config.alias === "string") {
-                config.alias = new RegExp(config.alias.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+                const escapedAlias = escapeStringRegexp(config.alias);
+                config.alias = new RegExp(escapedAlias + "$", "i");
                 fileIconsMatchScript += `    if (${config.alias}.test(filename)) { return "${config.icon}"; }\n`;
             }
         }
