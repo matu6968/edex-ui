@@ -78,10 +78,9 @@ Public release binaries are unsigned ([why](https://web.archive.org/web/20241204
 #### I have a problem!
 Search through the [Issues](https://github.com/matu6968/edex-ui/issues) to see if yours has already been reported. If you're confident it hasn't been reported yet, feel free to open up a new one. If you see your issue and it's been closed, it probably means that the fix for it will ship in the next version, and you'll have to wait a bit.
 #### Can you disable the keyboard/the filesystem display?
-You can't disable them (yet) but you can hide them. See the `tron-notype` theme.
-#### Why is the file browser saying that "Tracking Failed"? (Windows only)
-On Linux and macOS, eDEX tracks where you're going in your terminal tab to display the content of the current folder on-screen.
-Sadly, this is technically impossible to do on Windows right now, so the file browser reverts back to a "detached" mode. You can still use it to browse files & directories and click on files to input their path in the terminal.
+Yes! You can now completely disable the keyboard and/or filesystem display through the settings. Open the settings editor (Ctrl+Shift+S) and set `disableKeyboard` and/or `disableFilesystem` to `true`. When disabled, the remaining component will expand to fill the available space. You can also hide them using CSS themes like `tron-notype`.
+#### Why is the file browser saying that "Tracking Failed"? (Resolved!)
+eDEX now supports filesystem tracking on all platforms including Windows! The filesystem browser will automatically follow your current working directory as you navigate through folders in the terminal. On Linux and macOS, this is achieved by monitoring the process working directory. On Windows, eDEX intelligently parses terminal output to detect directory changes from PowerShell and Command Prompt. If tracking still fails in rare cases, the file browser will fall back to a "detached" mode where you can still browse files & directories and click on files to input their path in the terminal.
 #### Can this run on a Raspberry Pi / ARM device?
 We provide prebuilt arm64 and armv7 builds as a part of the revival of the project.
 #### Why is WebGL acceleration on the terminal disabled?

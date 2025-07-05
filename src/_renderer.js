@@ -374,15 +374,39 @@ async function initUI() {
     await _delay(700);
 
     document.getElementById("main_shell").setAttribute("style", "opacity: 0;");
-    document.body.innerHTML += `
-    <section id="filesystem" style="width: 0px;" class="${window.settings.hideDotfiles ? "hideDotfiles" : ""} ${window.settings.fsListView ? "list-view" : ""}">
-    </section>
-    <section id="keyboard" style="opacity:0;">
-    </section>`;
-    window.keyboard = new Keyboard({
-        layout: path.join(keyboardsDir, settings.keyboard+".json"),
-        container: "keyboard"
-    });
+    
+    // Conditionally create filesystem and keyboard sections based on settings
+    let sectionsHTML = "";
+    
+    if (!window.settings.disableFilesystem) {
+        sectionsHTML += `
+        <section id="filesystem" style="width: 0px;" class="${window.settings.hideDotfiles ? "hideDotfiles" : ""} ${window.settings.fsListView ? "list-view" : ""}">
+        </section>`;
+    }
+    
+    if (!window.settings.disableKeyboard) {
+        sectionsHTML += `
+        <section id="keyboard" style="opacity:0;">
+        </section>`;
+    }
+    
+    document.body.innerHTML += sectionsHTML;
+    
+    if (!window.settings.disableKeyboard) {
+        window.keyboard = new Keyboard({
+            layout: path.join(keyboardsDir, settings.keyboard+".json"),
+            container: "keyboard"
+        });
+    } else {
+        // Create a dummy keyboard object to avoid errors
+        window.keyboard = {
+            linkedToTerm: false,
+            detach: () => {},
+            attach: () => {},
+            togglePasswordMode: () => {},
+            container: { dataset: {} }
+        };
+    }
 
     await _delay(10);
 
@@ -408,14 +432,21 @@ async function initUI() {
 
     greeter.setAttribute("style", "opacity: 1;");
 
-    document.getElementById("filesystem").setAttribute("style", "");
-    document.getElementById("keyboard").setAttribute("style", "");
-    document.getElementById("keyboard").setAttribute("class", "animation_state_1");
-    window.audioManager.keyboard.play();
+    if (!window.settings.disableFilesystem) {
+        document.getElementById("filesystem").setAttribute("style", "");
+    }
+    
+    if (!window.settings.disableKeyboard) {
+        document.getElementById("keyboard").setAttribute("style", "");
+        document.getElementById("keyboard").setAttribute("class", "animation_state_1");
+        window.audioManager.keyboard.play();
 
-    await _delay(100);
+        await _delay(100);
 
-    document.getElementById("keyboard").setAttribute("class", "animation_state_1 animation_state_2");
+        document.getElementById("keyboard").setAttribute("class", "animation_state_1 animation_state_2");
+    } else {
+        await _delay(100);
+    }
 
     await _delay(1000);
 
@@ -423,7 +454,9 @@ async function initUI() {
 
     await _delay(100);
 
-    document.getElementById("keyboard").setAttribute("class", "");
+    if (!window.settings.disableKeyboard) {
+        document.getElementById("keyboard").setAttribute("class", "");
+    }
 
     await _delay(400);
 
@@ -519,7 +552,9 @@ async function initUI() {
         };
         // Prevent losing hardware keyboard focus on the terminal when using touch keyboard
         window.onmouseup = e => {
-            if (window.keyboard.linkedToTerm) window.term[window.currentTerm].term.focus();
+            if (!window.settings.disableKeyboard && window.keyboard.linkedToTerm) {
+                window.term[window.currentTerm].term.focus();
+            }
         };
         
         console.log("Writing welcome message...");
@@ -532,21 +567,36 @@ async function initUI() {
 
     await _delay(100);
 
-    window.fsDisp = new FilesystemDisplay({
-        parentId: "filesystem"
-    });
+    if (!window.settings.disableFilesystem) {
+        window.fsDisp = new FilesystemDisplay({
+            parentId: "filesystem"
+        });
 
-    await _delay(200);
+        await _delay(200);
 
-    document.getElementById("filesystem").setAttribute("style", "opacity: 1;");
+        document.getElementById("filesystem").setAttribute("style", "opacity: 1;");
 
-    // Resend terminal CWD to fsDisp if we're hot reloading
-    if (window.performance.navigation.type === 1) {
-        window.term[window.currentTerm].resendCWD();
-        // Restore UI state after reload
-        setTimeout(() => {
-            window.restoreUIState();
-        }, 1500);
+        // Resend terminal CWD to fsDisp if we're hot reloading
+        if (window.performance.navigation.type === 1) {
+            window.term[window.currentTerm].resendCWD();
+            // Restore UI state after reload
+            setTimeout(() => {
+                window.restoreUIState();
+            }, 1500);
+        }
+    } else {
+        // Create a dummy filesystem display object to avoid errors
+        window.fsDisp = {
+            followTab: () => {},
+            toggleListview: () => {},
+            toggleHidedotfiles: () => {},
+            readFS: () => {},
+            render: () => {},
+            openFile: () => {},
+            openMedia: () => {}
+        };
+        
+        await _delay(200);
     }
 
     await _delay(200);
@@ -595,7 +645,9 @@ window.focusShellTab = number => {
         window.term[number].term.focus();
         window.term[number].resendCWD();
 
-        window.fsDisp.followTab();
+        if (!window.settings.disableFilesystem) {
+            window.fsDisp.followTab();
+        }
         
         // Save UI state when switching tabs
         window.saveUIState();
@@ -837,6 +889,22 @@ window.openSettings = async () => {
                         </select></td>
                     </tr>
                     <tr>
+                        <td>disableKeyboard</td>
+                        <td>Completely disable the on-screen keyboard</td>
+                        <td><select id="settingsEditor-disableKeyboard">
+                            <option>${window.settings.disableKeyboard}</option>
+                            <option>${!window.settings.disableKeyboard}</option>
+                        </select></td>
+                    </tr>
+                    <tr>
+                        <td>disableFilesystem</td>
+                        <td>Completely disable the filesystem display</td>
+                        <td><select id="settingsEditor-disableFilesystem">
+                            <option>${window.settings.disableFilesystem}</option>
+                            <option>${!window.settings.disableFilesystem}</option>
+                        </select></td>
+                    </tr>
+                    <tr>
                         <td>experimentalGlobeFeatures</td>
                         <td>Toggle experimental features for the network globe</td>
                         <td><select id="settingsEditor-experimentalGlobeFeatures">
@@ -902,6 +970,8 @@ window.writeSettingsFile = () => {
         excludeThreadsFromToplist: (document.getElementById("settingsEditor-excludeThreadsFromToplist").value === "true"),
         hideDotfiles: (document.getElementById("settingsEditor-hideDotfiles").value === "true"),
         fsListView: (document.getElementById("settingsEditor-fsListView").value === "true"),
+        disableKeyboard: (document.getElementById("settingsEditor-disableKeyboard").value === "true"),
+        disableFilesystem: (document.getElementById("settingsEditor-disableFilesystem").value === "true"),
         experimentalGlobeFeatures: (document.getElementById("settingsEditor-experimentalGlobeFeatures").value === "true"),
         experimentalFeatures: (document.getElementById("settingsEditor-experimentalFeatures").value === "true")
     };

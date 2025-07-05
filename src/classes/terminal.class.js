@@ -318,6 +318,7 @@ class Terminal {
             this.ondisconnected = () => {};
 
             this._disableCWDtracking = false;
+            this._windowsCwd = null; // Track current working directory on Windows
             this._getTtyCWD = tty => {
                 return new Promise((resolve, reject) => {
                     let pid = tty._pid;
@@ -340,6 +341,17 @@ class Terminal {
                                 }
                             });
                             break;
+                        case "Windows_NT":
+                            // For Windows, we'll use a simpler approach by tracking directory changes
+                            // through the PTY data stream instead of querying the process directly
+                            // This is more reliable as it captures actual shell directory changes
+                            if (this._windowsCwd) {
+                                resolve(this._windowsCwd);
+                            } else {
+                                // Use current working directory as fallback
+                                resolve(opts.cwd || process.env.USERPROFILE || process.env.CD || "C:\\");
+                            }
+                            break;
                         default:
                             reject("Unsupported OS");
                     }
@@ -359,11 +371,76 @@ class Terminal {
                                 }
                             });
                             break;
+                        case "Windows_NT":
+                            // Use tasklist to get the process name on Windows
+                            require("child_process").exec(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, (e, output) => {
+                                if (e !== null) {
+                                    // Fallback to generic shell name
+                                    resolve(require("path").basename(opts.shell || "powershell.exe", ".exe"));
+                                } else {
+                                    try {
+                                        // Parse CSV output to get process name
+                                        const lines = output.trim().split('\n');
+                                        if (lines.length > 0) {
+                                            const processName = lines[0].split(',')[0].replace(/"/g, '');
+                                            resolve(require("path").basename(processName, ".exe"));
+                                        } else {
+                                            resolve(require("path").basename(opts.shell || "powershell.exe", ".exe"));
+                                        }
+                                    } catch (parseError) {
+                                        resolve(require("path").basename(opts.shell || "powershell.exe", ".exe"));
+                                    }
+                                }
+                            });
+                            break;
                         default:
                             reject("Unsupported OS");
                     }
                 });
             };
+            
+            // Windows-specific method to parse terminal output for directory changes
+            this._parseWindowsDirectoryChange = (data) => {
+                if (!data || typeof data !== 'string') return;
+                
+                try {
+                    // Look for PowerShell prompts that contain the current directory
+                    // PowerShell typically shows: PS C:\Path\To\Directory>
+                    const psPromptMatch = data.match(/PS\s+([A-Z]:[^\r\n>]+)>/);
+                    if (psPromptMatch) {
+                        const newPath = psPromptMatch[1].trim();
+                        if (newPath !== this._windowsCwd) {
+                            this._windowsCwd = newPath;
+                            return;
+                        }
+                    }
+                    
+                    // Look for CMD prompts that contain the current directory
+                    // CMD typically shows: C:\Path\To\Directory>
+                    const cmdPromptMatch = data.match(/^([A-Z]:[^\r\n>]+)>/m);
+                    if (cmdPromptMatch) {
+                        const newPath = cmdPromptMatch[1].trim();
+                        if (newPath !== this._windowsCwd) {
+                            this._windowsCwd = newPath;
+                            return;
+                        }
+                    }
+                    
+                    // Look for cd command execution and capture the resulting directory
+                    // This catches cases where the user types 'cd' to see current directory
+                    const cdOutputMatch = data.match(/^([A-Z]:[^\r\n]+)[\r\n]/m);
+                    if (cdOutputMatch && !data.includes('>') && !data.includes('PS ')) {
+                        const newPath = cdOutputMatch[1].trim();
+                        if (newPath.length > 3 && newPath !== this._windowsCwd) { // Minimum valid path length
+                            this._windowsCwd = newPath;
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    // Ignore parsing errors - they won't affect terminal functionality
+                }
+            };
+            
             this._nextTickUpdateTtyCWD = false;
             this._nextTickUpdateProcess = false;
             this._tick = setInterval(() => {
@@ -416,6 +493,11 @@ class Terminal {
                 cwd: opts.cwd || process.env.PWD,
                 env: opts.env || process.env
             });
+            
+            // Initialize Windows CWD tracking with the starting directory
+            if (require("os").type() === "Windows_NT") {
+                this._windowsCwd = opts.cwd || process.env.USERPROFILE || "C:\\";
+            }
 
             this.tty.onExit((code, signal) => {
                 this._closed = true;
@@ -477,6 +559,12 @@ class Terminal {
                 this.tty.onData(data => {
                     this._nextTickUpdateTtyCWD = true;
                     this._nextTickUpdateProcess = true;
+                    
+                    // Windows-specific directory tracking by parsing terminal output
+                    if (require("os").type() === "Windows_NT") {
+                        this._parseWindowsDirectoryChange(data);
+                    }
+                    
                     try {
                         ws.send(data);
                     } catch (e) {
