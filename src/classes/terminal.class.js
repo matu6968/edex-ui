@@ -304,7 +304,7 @@ class Terminal {
 
         } else if (opts.role === "server") {
 
-            this.Pty = require("node-pty");
+            this.Pty = require("@lydell/node-pty");
             this.Websocket = require("ws").Server;
             this.Ipc = require("electron").ipcMain;
 
