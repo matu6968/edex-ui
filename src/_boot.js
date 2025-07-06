@@ -266,7 +266,9 @@ app.on('ready', async () => {
     });
     signale.success(`Terminal back-end initialized!`);
     tty.onclosed = (code, signal) => {
-        tty.ondisconnected = () => {};
+        if (tty && typeof tty === 'object') {
+            tty.ondisconnected = () => {};
+        }
         signale.complete("Terminal exited", code, signal);
         app.quit();
     };
@@ -277,10 +279,16 @@ app.on('ready', async () => {
     tty.onresized = (cols, rows) => {
         signale.info("Resized TTY to ", cols, rows);
     };
-    tty.ondisconnected = () => {
+    // Define the disconnection handler function to avoid circular references
+    const handleMainTerminalDisconnection = () => {
         signale.error("Lost connection to frontend");
         signale.watch("Waiting for frontend connection...");
+        
+        // For main terminal, just wait for reconnection without restarting
+        // The shell process should remain alive and the frontend should reconnect after UI reload
     };
+    
+    tty.ondisconnected = handleMainTerminalDisconnection;
 
     // Support for multithreaded systeminformation calls
     signale.pending("Starting multithreaded calls controller...");
@@ -297,18 +305,22 @@ app.on('ready', async () => {
         extraTtys[basePort+i] = null;
     }
 
-    ipc.on("ttyspawn", (e, arg) => {
+    ipc.on("ttyspawn", (e, requestId) => {
         let port = null;
+        
+        // Find an available port - ensure proper type conversion
         Object.keys(extraTtys).forEach(key => {
+            let portNum = Number(key);
             if (extraTtys[key] === null && port === null) {
-                extraTtys[key] = {};
-                port = key;
+                extraTtys[key] = {}; // Mark as occupied
+                port = portNum;
             }
         });
 
         if (port === null) {
             signale.error("TTY spawn denied (Reason: exceeded max TTYs number)");
-            e.sender.send("ttyspawn-reply", "ERROR: max number of ttys reached");
+            signale.info("Available ports state:", Object.keys(extraTtys).map(k => `${k}: ${extraTtys[k] === null ? 'free' : 'occupied'}`));
+            e.sender.send(`ttyspawn-reply-${requestId}`, "ERROR: max number of ttys reached");
         } else {
             signale.pending(`Creating new TTY process on port ${port}`);
             let term = new Terminal({
@@ -320,27 +332,64 @@ app.on('ready', async () => {
                 port: port
             });
             signale.success(`New terminal back-end initialized at ${port}`);
+            
+            // Store the port number in the terminal object for cleanup
+            term.port = port;
+            
             term.onclosed = (code, signal) => {
-                term.ondisconnected = () => {};
-                term.wss.close();
+                if (term && typeof term === 'object') {
+                    // Clear any pending disconnection timeout
+                    if (term._disconnectionTimeout) {
+                        clearTimeout(term._disconnectionTimeout);
+                        term._disconnectionTimeout = null;
+                    }
+                    
+                    term.ondisconnected = () => {};
+                    if (term.wss && term.wss.close) term.wss.close();
+                    
+                    // Free up the port - ensure proper cleanup
+                    if (term.port && extraTtys.hasOwnProperty(term.port)) {
+                        extraTtys[term.port] = null;
+                        signale.info(`Port ${term.port} freed up for reuse`);
+                    }
+                    term = null;
+                }
                 signale.complete(`TTY exited at ${port}`, code, signal);
-                extraTtys[term.port] = null;
-                term = null;
             };
             term.onopened = pid => {
                 signale.success(`TTY ${port} connected to frontend (process PID ${pid})`);
+                
+                // Clear any pending disconnection timeout since we've reconnected
+                if (term._disconnectionTimeout) {
+                    clearTimeout(term._disconnectionTimeout);
+                    term._disconnectionTimeout = null;
+                }
             };
             term.onresized = () => {};
             term.ondisconnected = () => {
-                term.onclosed = () => {};
-                term.close();
-                term.wss.close();
-                extraTtys[term.port] = null;
-                term = null;
+                signale.info(`TTY ${port} disconnected, will cleanup if no reconnection in 5 seconds...`);
+                
+                // Set a timeout to cleanup if no reconnection happens
+                // This handles UI reloads where the frontend never reconnects
+                term._disconnectionTimeout = setTimeout(() => {
+                    if (term && typeof term === 'object') {
+                        signale.info(`TTY ${port} cleanup timeout reached, cleaning up...`);
+                        term.onclosed = () => {}; // Prevent double cleanup
+                        if (term.close) term.close();
+                        if (term.wss && term.wss.close) term.wss.close();
+                        
+                        // Free up the port - ensure proper cleanup
+                        if (term.port && extraTtys.hasOwnProperty(term.port)) {
+                            extraTtys[term.port] = null;
+                            signale.info(`Port ${term.port} freed up after timeout cleanup`);
+                        }
+                        term = null;
+                    }
+                }, 5000); // 5 second timeout
             };
 
             extraTtys[port] = term;
-            e.sender.send("ttyspawn-reply", "SUCCESS: "+port);
+            e.sender.send(`ttyspawn-reply-${requestId}`, "SUCCESS: "+port);
         }
     });
 

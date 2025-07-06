@@ -378,23 +378,33 @@ async function initUI() {
     // Conditionally create filesystem and keyboard sections based on settings
     let sectionsHTML = "";
     
-    if (!window.settings.disableFilesystem) {
+    // Ensure settings exist and have proper defaults
+    if (!window.settings) {
+        window.settings = {};
+    }
+    
+    const disableFilesystem = window.settings.disableFilesystem === true;
+    const disableKeyboard = window.settings.disableKeyboard === true;
+    const hideDotfiles = window.settings.hideDotfiles === true;
+    const fsListView = window.settings.fsListView === true;
+    
+    if (!disableFilesystem) {
         sectionsHTML += `
-        <section id="filesystem" style="width: 0px;" class="${window.settings.hideDotfiles ? "hideDotfiles" : ""} ${window.settings.fsListView ? "list-view" : ""}">
+        <section id="filesystem" style="width: 0px;" class="${hideDotfiles ? "hideDotfiles" : ""} ${fsListView ? "list-view" : ""}">
         </section>`;
     }
     
-    if (!window.settings.disableKeyboard) {
+    if (!disableKeyboard) {
         sectionsHTML += `
         <section id="keyboard" style="opacity:0;">
         </section>`;
     }
     
-    document.body.innerHTML += sectionsHTML;
+        document.body.innerHTML += sectionsHTML;
     
-    if (!window.settings.disableKeyboard) {
+    if (!disableKeyboard) {
         window.keyboard = new Keyboard({
-            layout: path.join(keyboardsDir, settings.keyboard+".json"),
+            layout: path.join(keyboardsDir, (window.settings.keyboard || "en-US")+".json"),
             container: "keyboard"
         });
     } else {
@@ -404,7 +414,17 @@ async function initUI() {
             detach: () => {},
             attach: () => {},
             togglePasswordMode: () => {},
-            container: { dataset: {} }
+            keydownHandler: () => true,
+            container: { 
+                dataset: {
+                    isCtrlOn: "false",
+                    isShiftOn: "false",
+                    isAltOn: "false",
+                    isCapsLckOn: "false",
+                    isFnOn: "false",
+                    passwordMode: "false"
+                }
+            }
         };
     }
 
@@ -537,29 +557,113 @@ async function initUI() {
         </div>`;
     try {
         console.log("Creating terminal instance...");
+        
+        // Add a longer delay to ensure backend is ready, especially after reload
+        const isReload = window.performance.navigation.type === 1;
+        await _delay(isReload ? 500 : 100);
+        
+        console.log(`Connecting to terminal on port ${window.settings.port || 3000}...`);
         window.term = {
             0: new Terminal({
                 role: "client",
                 parentId: "terminal0",
                 port: window.settings.port || 3000
-            })
+            }),
+            1: null,
+            2: null,
+            3: null,
+            4: null
         };
         console.log("Terminal instance created successfully");
         
         window.currentTerm = 0;
-        window.term[0].onprocesschange = p => {
-            document.getElementById("shell_tab0").innerHTML = `<p>MAIN - ${p}</p>`;
-        };
-        // Prevent losing hardware keyboard focus on the terminal when using touch keyboard
-        window.onmouseup = e => {
-            if (!window.settings.disableKeyboard && window.keyboard.linkedToTerm) {
-                window.term[window.currentTerm].term.focus();
-            }
-        };
         
-        console.log("Writing welcome message...");
-        window.term[0].term.writeln("\x1b[1m"+`Welcome to eDEX-UI v${remote.app.getVersion()} - Electron v${process.versions.electron}`+"\x1b[0m");
-        console.log("Welcome message written successfully");
+        // Safety checks before setting terminal properties
+        if (window.term[0]) {
+            console.log("Setting up terminal 0 properties...");
+            
+            // Add connection status tracking
+            window.term[0]._connectionReady = false;
+            
+            // Ensure the terminal is properly connected
+            window.term[0].oncwdchange = cwd => {
+                if (window.fsDisp && !window.settings.disableFilesystem) {
+                    window.fsDisp.followTab();
+                }
+            };
+            
+            window.term[0].onprocesschange = p => {
+                const tabElement = document.getElementById("shell_tab0");
+                if (tabElement) {
+                    tabElement.innerHTML = `<p>MAIN - ${p}</p>`;
+                }
+                // Mark as ready when we receive the first process update
+                if (!window.term[0]._connectionReady) {
+                    window.term[0]._connectionReady = true;
+                    console.log("Terminal 0 connection established");
+                }
+            };
+            
+            // Add socket state monitoring for debugging
+            if (window.term[0].socket) {
+                window.term[0].socket.addEventListener('open', () => {
+                    console.log("Terminal 0 WebSocket connection opened");
+                });
+                
+                window.term[0].socket.addEventListener('error', (e) => {
+                    console.error("Terminal 0 WebSocket error:", e);
+                });
+                
+                window.term[0].socket.addEventListener('close', (e) => {
+                    console.log("Terminal 0 WebSocket connection closed:", e.code, e.reason);
+                });
+            }
+            
+            // Prevent losing hardware keyboard focus on the terminal when using touch keyboard
+            window.onmouseup = e => {
+                if (!disableKeyboard && window.keyboard && window.keyboard.linkedToTerm) {
+                    if (window.term[window.currentTerm] && window.term[window.currentTerm].term) {
+                        window.term[window.currentTerm].term.focus();
+                    }
+                }
+            };
+            
+            // Only send welcome message on initial startup, not on UI reload
+            if (window.performance.navigation.type !== 1) {
+                console.log("Writing welcome message...");
+                // Wait a moment for the terminal to be ready before writing
+                if (window.term[0].term) {
+                    window.term[0].term.writeln("\x1b[1m"+`Welcome to eDEX-UI v${remote.app.getVersion()} - Electron v${process.versions.electron}`+"\x1b[0m");
+                    console.log("Welcome message written successfully");
+                }
+            } else {
+                console.log("UI reload detected, skipping welcome message");
+                // After UI reload, refresh the terminal display to show current shell state
+                setTimeout(() => {
+                    if (window.term[0] && window.term[0].term) {
+                        console.log("Starting terminal refresh sequence...");
+                        
+                        // First, ensure terminal is properly fitted
+                        if (window.term[0].fit) {
+                            window.term[0].fit();
+                        }
+                        
+                        // Wait for the terminal to be fully connected, then force a refresh
+                        setTimeout(() => {
+                            if (window.term[0] && window.term[0].term) {
+                                // Send a simple Enter to trigger the shell to show its prompt
+                                // This is the most reliable way to get bash to redraw its prompt
+                                window.term[0].term.write('\r');
+                                
+                                console.log("Terminal refresh sequence completed");
+                            }
+                        }, 200);
+                    }
+                }, 1500); // Increased delay to ensure terminal is fully connected
+            }
+        } else {
+            throw new Error("Failed to create terminal instance");
+        }
     } catch (e) {
         console.error("Terminal initialization failed:", e);
         throw e;
@@ -567,7 +671,7 @@ async function initUI() {
 
     await _delay(100);
 
-    if (!window.settings.disableFilesystem) {
+    if (!disableFilesystem) {
         window.fsDisp = new FilesystemDisplay({
             parentId: "filesystem"
         });
@@ -578,35 +682,62 @@ async function initUI() {
 
         // Resend terminal CWD to fsDisp if we're hot reloading
         if (window.performance.navigation.type === 1) {
-            window.term[window.currentTerm].resendCWD();
-            // Restore UI state after reload
+            // Give extra time for terminal reconnection after UI reload
+            setTimeout(() => {
+                if (window.term[window.currentTerm] && window.term[window.currentTerm].resendCWD) {
+                    window.term[window.currentTerm].resendCWD();
+                }
+            }, 1000);
+            // Restore UI state after reload with extra delay
             setTimeout(() => {
                 window.restoreUIState();
-            }, 1500);
+            }, 2500);
         }
-    } else {
-        // Create a dummy filesystem display object to avoid errors
-        window.fsDisp = {
-            followTab: () => {},
-            toggleListview: () => {},
-            toggleHidedotfiles: () => {},
-            readFS: () => {},
-            render: () => {},
-            openFile: () => {},
-            openMedia: () => {}
-        };
-        
-        await _delay(200);
-    }
+         } else {
+         // Create a dummy filesystem display object to avoid errors
+         window.fsDisp = {
+             followTab: () => {},
+             toggleListview: () => {},
+             toggleHidedotfiles: () => {},
+             readFS: () => {},
+             render: () => {},
+             openFile: () => {},
+             openMedia: () => {},
+             readDevices: () => {},
+             reCalculateDiskUsage: () => {},
+             renderDiskUsage: () => {},
+             setFailedState: () => {},
+             watchFS: () => {},
+             failed: false,
+             cwd: [],
+             dirpath: "",
+             _noTracking: false
+         };
+         
+         await _delay(200);
+     }
 
     await _delay(200);
 
     window.updateCheck = new UpdateChecker();
     
-    // Always restore UI state after initialization
+    // Always restore UI state after initialization with increased delay
     setTimeout(() => {
         window.restoreUIState();
-    }, 2000);
+    }, 3000);
+    
+    // Save state before page unload/reload
+    window.addEventListener('beforeunload', () => {
+        console.log("Page unloading, saving terminal state...");
+        window.saveUIState();
+    });
+    
+    // Periodic save every 10 seconds to ensure state is always current
+    setInterval(() => {
+        if (window.term && window.term[0]) {
+            window.saveUIState();
+        }
+    }, 10000);
 }
 
 window.themeChanger = theme => {
@@ -617,12 +748,17 @@ window.themeChanger = theme => {
 };
 
 window.remakeKeyboard = layout => {
-    document.getElementById("keyboard").innerHTML = "";
-    window.keyboard = new Keyboard({
-        layout: path.join(keyboardsDir, layout+".json" || settings.keyboard+".json"),
-        container: "keyboard"
-    });
-    ipc.send("setKbOverride", layout);
+    if (!window.settings.disableKeyboard) {
+        const keyboardElement = document.getElementById("keyboard");
+        if (keyboardElement) {
+            keyboardElement.innerHTML = "";
+        }
+        window.keyboard = new Keyboard({
+            layout: path.join(keyboardsDir, layout+".json"),
+            container: "keyboard"
+        });
+        ipc.send("setKbOverride", layout);
+    }
 };
 
 window.focusShellTab = number => {
@@ -651,37 +787,98 @@ window.focusShellTab = number => {
         
         // Save UI state when switching tabs
         window.saveUIState();
-    } else if (number > 0 && number <= 4 && window.term[number] !== null && typeof window.term[number] !== "object") {
-        window.term[number] = null;
-
+    } else if (number > 0 && number <= 4 && (!window.term[number] || window.term[number] === null)) {
+        // Prevent concurrent terminal creation for the same tab
+        if (window.term[number] === "creating") {
+            console.log(`Terminal ${number} is already being created, ignoring request`);
+            return;
+        }
+        
+        // Mark this terminal as being created
+        window.term[number] = "creating";
         document.getElementById("shell_tab"+number).innerHTML = "<p>LOADING...</p>";
-        ipc.send("ttyspawn", "true");
-        ipc.once("ttyspawn-reply", (e, r) => {
+        
+        // Set a timeout to reset the "creating" state if creation fails
+        const creationTimeout = setTimeout(() => {
+            if (window.term[number] === "creating") {
+                console.error(`Terminal ${number} creation timed out`);
+                window.term[number] = null;
+                document.getElementById("shell_tab"+number).innerHTML = "<p>TIMEOUT</p>";
+            }
+        }, 10000); // 10 second timeout
+        
+        console.log(`Requesting new terminal for tab ${number}...`);
+        const requestId = `ttyspawn-${number}-${Date.now()}`;
+        ipc.send("ttyspawn", requestId);
+        ipc.once(`ttyspawn-reply-${requestId}`, (e, r) => {
+            // Clear the creation timeout since we got a reply
+            clearTimeout(creationTimeout);
+            
             if (r.startsWith("ERROR")) {
+                console.error(`Failed to create terminal ${number}: ${r}`);
+                window.term[number] = null; // Reset from "creating" state
                 document.getElementById("shell_tab"+number).innerHTML = "<p>ERROR</p>";
             } else if (r.startsWith("SUCCESS")) {
                 let port = Number(r.substr(9));
+                console.log(`Terminal ${number} assigned to port ${port}`);
 
-                window.term[number] = new Terminal({
-                    role: "client",
-                    parentId: "terminal"+number,
-                    port
-                });
+                try {
+                    window.term[number] = new Terminal({
+                        role: "client",
+                        parentId: "terminal"+number,
+                        port
+                    });
 
-                window.term[number].onclose = e => {
-                    delete window.term[number].onprocesschange;
-                    document.getElementById("shell_tab"+number).innerHTML = "<p>EMPTY</p>";
-                    document.getElementById("terminal"+number).innerHTML = "";
-                    window.term[number].term.dispose();
-                    delete window.term[number];
-                    window.useAppShortcut("PREVIOUS_TAB");
-                    // Save UI state when closing tabs
-                    window.saveUIState();
-                };
+                    // Safety check before setting properties
+                    if (window.term[number]) {
+                        console.log(`Terminal ${number} created successfully on port ${port}`);
+                        
+                        window.term[number].onclose = e => {
+                            if (window.term[number] && window.term[number].onprocesschange) {
+                                delete window.term[number].onprocesschange;
+                            }
+                            const tabElement = document.getElementById("shell_tab"+number);
+                            const terminalElement = document.getElementById("terminal"+number);
+                            if (tabElement) tabElement.innerHTML = "<p>EMPTY</p>";
+                            if (terminalElement) terminalElement.innerHTML = "";
+                            if (window.term[number] && window.term[number].term) {
+                                window.term[number].term.dispose();
+                            }
+                            delete window.term[number];
+                            window.useAppShortcut("PREVIOUS_TAB");
+                            // Save UI state when closing tabs
+                            window.saveUIState();
+                        };
 
-                window.term[number].onprocesschange = p => {
-                    document.getElementById("shell_tab"+number).innerHTML = `<p>#${number+1} - ${p}</p>`;
-                };
+                        window.term[number].onprocesschange = p => {
+                            const tabElement = document.getElementById("shell_tab"+number);
+                            if (tabElement) {
+                                tabElement.innerHTML = `<p>#${number+1} - ${p}</p>`;
+                            }
+                        };
+                        
+                        // Add debugging for this terminal's connection
+                        if (window.term[number].socket) {
+                            window.term[number].socket.addEventListener('open', () => {
+                                console.log(`Terminal ${number} WebSocket connection opened on port ${port}`);
+                            });
+                            
+                            window.term[number].socket.addEventListener('error', (e) => {
+                                console.error(`Terminal ${number} WebSocket error:`, e);
+                            });
+                            
+                            // Add connection monitoring
+                            window.term[number].socket.addEventListener('message', () => {
+                                console.log(`Terminal ${number} connection established`);
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Error creating terminal ${number}:`, e);
+                    window.term[number] = null; // Reset from "creating" state
+                    document.getElementById("shell_tab"+number).innerHTML = "<p>ERROR</p>";
+                    return;
+                }
 
                 document.getElementById("shell_tab"+number).innerHTML = `<p>::${port}</p>`;
                 setTimeout(() => {
@@ -945,35 +1142,47 @@ window.writeFile = (path) => {
 };
 
 window.writeSettingsFile = () => {
+    // Helper function to safely get element value
+    const getElementValue = (id, defaultValue = "") => {
+        const element = document.getElementById(id);
+        return element ? element.value : defaultValue;
+    };
+    
+    // Helper function to safely get boolean value
+    const getBooleanValue = (id, defaultValue = false) => {
+        const element = document.getElementById(id);
+        return element ? (element.value === "true") : defaultValue;
+    };
+    
     window.settings = {
-        shell: document.getElementById("settingsEditor-shell").value,
-        shellArgs: document.getElementById("settingsEditor-shellArgs").value,
-        cwd: document.getElementById("settingsEditor-cwd").value,
-        env: document.getElementById("settingsEditor-env").value,
-        username: document.getElementById("settingsEditor-username").value,
-        keyboard: document.getElementById("settingsEditor-keyboard").value,
-        theme: document.getElementById("settingsEditor-theme").value,
-        termFontSize: Number(document.getElementById("settingsEditor-termFontSize").value),
-        audio: (document.getElementById("settingsEditor-audio").value === "true"),
-        audioVolume: Number(document.getElementById("settingsEditor-audioVolume").value),
-        disableFeedbackAudio: (document.getElementById("settingsEditor-disableFeedbackAudio").value === "true"),
-        pingAddr: document.getElementById("settingsEditor-pingAddr").value,
-        clockHours: Number(document.getElementById("settingsEditor-clockHours").value),
-        port: Number(document.getElementById("settingsEditor-port").value),
-        monitor: Number(document.getElementById("settingsEditor-monitor").value),
-        nointro: (document.getElementById("settingsEditor-nointro").value === "true"),
-        nocursor: (document.getElementById("settingsEditor-nocursor").value === "true"),
-        iface: document.getElementById("settingsEditor-iface").value,
-        allowWindowed: (document.getElementById("settingsEditor-allowWindowed").value === "true"),
+        shell: getElementValue("settingsEditor-shell"),
+        shellArgs: getElementValue("settingsEditor-shellArgs"),
+        cwd: getElementValue("settingsEditor-cwd"),
+        env: getElementValue("settingsEditor-env"),
+        username: getElementValue("settingsEditor-username"),
+        keyboard: getElementValue("settingsEditor-keyboard"),
+        theme: getElementValue("settingsEditor-theme"),
+        termFontSize: Number(getElementValue("settingsEditor-termFontSize", "15")),
+        audio: getBooleanValue("settingsEditor-audio", true),
+        audioVolume: Number(getElementValue("settingsEditor-audioVolume", "1.0")),
+        disableFeedbackAudio: getBooleanValue("settingsEditor-disableFeedbackAudio", false),
+        pingAddr: getElementValue("settingsEditor-pingAddr", "1.1.1.1"),
+        clockHours: Number(getElementValue("settingsEditor-clockHours", "24")),
+        port: Number(getElementValue("settingsEditor-port", "3000")),
+        monitor: Number(getElementValue("settingsEditor-monitor", "0")),
+        nointro: getBooleanValue("settingsEditor-nointro", false),
+        nocursor: getBooleanValue("settingsEditor-nocursor", false),
+        iface: getElementValue("settingsEditor-iface"),
+        allowWindowed: getBooleanValue("settingsEditor-allowWindowed", false),
         forceFullscreen: window.settings.forceFullscreen,
-        keepGeometry: (document.getElementById("settingsEditor-keepGeometry").value === "true"),
-        excludeThreadsFromToplist: (document.getElementById("settingsEditor-excludeThreadsFromToplist").value === "true"),
-        hideDotfiles: (document.getElementById("settingsEditor-hideDotfiles").value === "true"),
-        fsListView: (document.getElementById("settingsEditor-fsListView").value === "true"),
-        disableKeyboard: (document.getElementById("settingsEditor-disableKeyboard").value === "true"),
-        disableFilesystem: (document.getElementById("settingsEditor-disableFilesystem").value === "true"),
-        experimentalGlobeFeatures: (document.getElementById("settingsEditor-experimentalGlobeFeatures").value === "true"),
-        experimentalFeatures: (document.getElementById("settingsEditor-experimentalFeatures").value === "true")
+        keepGeometry: getBooleanValue("settingsEditor-keepGeometry", false),
+        excludeThreadsFromToplist: getBooleanValue("settingsEditor-excludeThreadsFromToplist", true),
+        hideDotfiles: getBooleanValue("settingsEditor-hideDotfiles", false),
+        fsListView: getBooleanValue("settingsEditor-fsListView", false),
+        disableKeyboard: getBooleanValue("settingsEditor-disableKeyboard", false),
+        disableFilesystem: getBooleanValue("settingsEditor-disableFilesystem", false),
+        experimentalGlobeFeatures: getBooleanValue("settingsEditor-experimentalGlobeFeatures", false),
+        experimentalFeatures: getBooleanValue("settingsEditor-experimentalFeatures", false)
     };
 
     Object.keys(window.settings).forEach(key => {
@@ -1004,35 +1213,59 @@ window.saveUIState = () => {
     };
     
     // Save which tabs are open
-    for (let i = 0; i <= 4; i++) {
-        if (window.term[i] && typeof window.term[i] === "object") {
-            terminalState.openTabs.push(i);
+    if (window.term && typeof window.term === "object") {
+        for (let i = 0; i <= 4; i++) {
+            if (window.term[i] && typeof window.term[i] === "object") {
+                terminalState.openTabs.push(i);
+                console.log(`Saving terminal tab ${i} state`);
+            }
         }
     }
     
+    console.log("Saving UI state:", terminalState);
     window.lastWindowState["terminalState"] = terminalState;
     fs.writeFileSync(lastWindowStateFile, JSON.stringify(window.lastWindowState, "", 4));
 };
 
 // Restore UI state including terminal tabs
 window.restoreUIState = () => {
-    if (window.lastWindowState.terminalState) {
+    // Only restore if main terminal is properly initialized
+    if (!window.term || !window.term[0] || !window.term[0].term) {
+        console.log("Main terminal not ready, delaying UI state restoration...");
+        setTimeout(() => {
+            window.restoreUIState();
+        }, 1000);
+        return;
+    }
+    
+    console.log("Attempting to restore UI state...");
+    console.log("Available window.lastWindowState:", window.lastWindowState);
+    
+    if (window.lastWindowState && window.lastWindowState.terminalState) {
         let terminalState = window.lastWindowState.terminalState;
+        console.log("Found terminal state to restore:", terminalState);
         
         // Restore additional tabs that were open
-        terminalState.openTabs.forEach(tabNumber => {
-            if (tabNumber > 0 && !window.term[tabNumber]) {
-                // Trigger tab creation
-                window.focusShellTab(tabNumber);
-            }
-        });
+        if (terminalState.openTabs && Array.isArray(terminalState.openTabs)) {
+            console.log("Restoring terminal tabs:", terminalState.openTabs);
+            terminalState.openTabs.forEach(tabNumber => {
+                if (tabNumber > 0 && window.term && !window.term[tabNumber]) {
+                    console.log(`Restoring terminal tab ${tabNumber}`);
+                    // Trigger tab creation
+                    window.focusShellTab(tabNumber);
+                }
+            });
+        }
         
         // Restore the active tab after a short delay to ensure tabs are created
         setTimeout(() => {
-            if (terminalState.currentTerm !== undefined && window.term[terminalState.currentTerm]) {
+            if (terminalState.currentTerm !== undefined && window.term && window.term[terminalState.currentTerm]) {
+                console.log(`Restoring active terminal tab ${terminalState.currentTerm}`);
                 window.focusShellTab(terminalState.currentTerm);
             }
-        }, 1000);
+        }, 2000); // Increased delay to allow tab creation
+    } else {
+        console.log("No terminal state found to restore");
     }
 };
 
@@ -1115,7 +1348,9 @@ window.openShortcutsHelp = () => {
         ]
     }, () => {
         window.keyboard.attach();
-        window.term[window.currentTerm].term.focus();
+        if (window.term && window.term[window.currentTerm] && window.term[window.currentTerm].term) {
+            window.term[window.currentTerm].term.focus();
+        }
     });
 
     let wrap1 = document.getElementById('shortcutsHelpAccordeon1');
@@ -1131,6 +1366,12 @@ window.openShortcutsHelp = () => {
 };
 
 window.useAppShortcut = action => {
+    // Safety check to ensure terminal is available
+    if (!window.term || !window.term[window.currentTerm]) {
+        console.log("Terminal not available for shortcut:", action);
+        return false;
+    }
+    
     switch(action) {
         case "COPY":
             window.term[window.currentTerm].clipboard.copy();

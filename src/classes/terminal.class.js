@@ -543,7 +543,9 @@ class Terminal {
             this.wss.on("connection", ws => {
                 this.onopened(this.tty._pid);
                 ws.on("close", (code, reason) => {
-                    this.ondisconnected(code, reason);
+                    if (this.ondisconnected && typeof this.ondisconnected === 'function') {
+                        this.ondisconnected(code, reason);
+                    }
                 });
                 ws.on("message", msg => {
                     // Sanitize input to prevent code injection while allowing legitimate terminal input
@@ -574,8 +576,13 @@ class Terminal {
             });
 
             this.close = () => {
-                this.tty.kill();
+                if (this.tty && this.tty.kill) {
+                    this.tty.kill();
+                }
                 this._closed = true;
+                if (this._tick) {
+                    clearInterval(this._tick);
+                }
             };
 
             /**
