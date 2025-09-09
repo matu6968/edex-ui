@@ -1889,10 +1889,10 @@ node-abi@^3.45.0:
   dependencies:
     semver "^7.3.5"
 
-node-abi@^4.11.0, node-abi@^4.2.0:
-  version "4.11.0"
-  resolved "https://registry.npmjs.org/node-abi/-/node-abi-4.11.0.tgz"
-  integrity sha512-QSiqRULRCbxU9nEUBu1oJCwKKjsEdcVEB9+fuoiYMEWJGMJrLMv5xwbKxe5h2en0xCNikTB+f6IIijO+TJc6JQ==
+node-abi@^4.14.0, node-abi@^4.2.0:
+  version "4.14.0"
+  resolved "https://registry.yarnpkg.com/node-abi/-/node-abi-4.14.0.tgz#7846b36a732f1afa221be3ca0e6248448bc111ef"
+  integrity sha512-E4n91K4Nk1Rch2KzD+edU2bfZTP4W42GypAUDXU4vu1A+4u9PvUNDkGI0dXbsy8ZeF3WGj0SD/uHxnXD/sW+3w==
   dependencies:
     semver "^7.6.3"
 
