@@ -72,7 +72,7 @@ class Terminal {
                 });
             }
 
-            let color = require("color");
+            let color = require("color").default;
             let colorify;
             if (doCustomFilter) {
                 colorify = (base, target) => {
