@@ -8,7 +8,7 @@
   <a href="#featured-in"><img alt="undefined" src="https://img.shields.io/github/downloads/GitSquared/edex-ui/total.svg?style=popout"></a>
   <a href="https://github.com/matu6968/edex-ui/blob/master/LICENSE"><img alt="undefined" src="https://img.shields.io/github/license/GitSquared/edex-ui.svg?style=popout"></a>
   <br>
-  <a href="https://github.com/matu6968/edex-ui/releases/download/v2.3.1/eDEX-UI-Windows.exe" target="_blank"><img alt="undefined" src="https://badgen.net/badge/Download/Windows x86_64/?color=blue&icon=windows&label"></a>
+  <a href="https://github.com/matu6968/edex-ui/releases/download/v2.3.1/eDEX-UI-Windows-x64.exe" target="_blank"><img alt="undefined" src="https://badgen.net/badge/Download/Windows x86_64/?color=blue&icon=windows&label"></a>
   <a href="https://github.com/matu6968/edex-ui/releases/download/v2.3.1/eDEX-UI-Windows-ia32.exe" target="_blank"><img alt="undefined" src="https://badgen.net/badge/Download/Windows x86/?color=blue&icon=windows&label"></a>
   <a href="https://github.com/matu6968/edex-ui/releases/download/v2.3.1/eDEX-UI-Windows-arm64.exe" target="_blank"><img alt="undefined" src="https://badgen.net/badge/Download/Windows ARM64/?color=blue&icon=windows&label"></a>
   <a href="https://github.com/matu6968/edex-ui/releases/download/v2.3.1/eDEX-UI-macOS-x64.dmg" target="_blank"><img alt="undefined" src="https://badgen.net/badge/Download/macOS x86_64/?color=grey&icon=apple&label"></a>
