@@ -109,7 +109,7 @@
   "dependencies": {
     "@electron/rebuild": "^4.0.1",
     "clean-css": "^5.3.3",
-    "electron": "^38.1.0",
+    "electron": "^38.2.0",
     "electron-builder": "^26.0.12",
     "https-proxy-agent": "^7.0.5",
     "mime-types": "^3.0.1",
