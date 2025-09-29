@@ -312,6 +312,7 @@ class Terminal {
             this.port = opts.port || 3000;
 
             this._closed = false;
+            this._isReconnection = false;
             this.onclosed = () => {};
             this.onopened = () => {};
             this.onresize = () => {};
@@ -542,20 +543,39 @@ class Terminal {
             });
             this.wss.on("connection", ws => {
                 this.onopened(this.tty._pid);
+                
+                // Only send newline on reconnection, not on initial connection
+                // Initial connection will automatically show shell prompt
+                if (this._isReconnection) {
+                    // Send a newline to trigger a fresh shell prompt after reconnection
+                    // This helps ensure the user sees a prompt after UI reload
+                    // Note: This will execute any pending command in programs like Python
+                    setTimeout(() => {
+                        this.tty.write('\n');
+                    }, 100);
+                }
+                
                 ws.on("close", (code, reason) => {
+                    this._isReconnection = true; // Mark as reconnection for next time
                     if (this.ondisconnected && typeof this.ondisconnected === 'function') {
                         this.ondisconnected(code, reason);
                     }
                 });
                 ws.on("message", msg => {
-                    // Sanitize input to prevent code injection while allowing legitimate terminal input
-                    // Security: All WebSocket messages are validated before being passed to the PTY
-                    if (this._isValidTerminalInput(msg)) {
-                        // Convert Buffer to string if needed for PTY compatibility
-                        const sanitizedMsg = Buffer.isBuffer(msg) ? msg.toString('utf8') : msg;
-                        this.tty.write(sanitizedMsg);
-                    } else {
-                        console.warn("Received invalid or potentially unsafe message:", msg);
+                    // Allow all terminal input - the PTY will handle proper terminal protocol
+                    // Only basic safety check for extremely long inputs to prevent DoS
+                    if (Buffer.isBuffer(msg)) {
+                        if (msg.length > 8192) {
+                            console.warn("Message too long, ignoring");
+                            return;
+                        }
+                        this.tty.write(msg);
+                    } else if (typeof msg === 'string') {
+                        if (msg.length > 8192) {
+                            console.warn("Message too long, ignoring");
+                            return;
+                        }
+                        this.tty.write(msg);
                     }
                 });
                 this.tty.onData(data => {
@@ -585,87 +605,6 @@ class Terminal {
                 }
             };
 
-            /**
-             * Validate terminal input to prevent code injection while allowing legitimate terminal operations
-             * This function sanitizes WebSocket messages before passing them to the PTY
-             * 
-             * Security measures:
-             * - Validates input type and length
-             * - Allows printable characters and essential control characters
-             * - Blocks null bytes and suspicious escape sequences
-             * - Prevents potential DoS attacks with length limits
-             * 
-             * @param {string|Buffer} msg - The message from WebSocket
-             * @returns {boolean} - True if input is safe for terminal use
-             */
-            this._isValidTerminalInput = (msg) => {
-                // Handle Buffer objects from WebSocket
-                if (Buffer.isBuffer(msg)) {
-                    // Convert buffer to string for validation
-                    try {
-                        msg = msg.toString('utf8');
-                    } catch (e) {
-                        return false;
-                    }
-                }
-
-                // Must be a string at this point
-                if (typeof msg !== "string") {
-                    return false;
-                }
-
-                // Reject empty strings or extremely long inputs (potential DoS)
-                if (msg.length === 0 || msg.length > 8192) {
-                    return false;
-                }
-
-                // Allow legitimate terminal input including:
-                // - Printable ASCII and extended ASCII characters (0x20-0xFF)
-                // - Common control characters used in terminals
-                // - Unicode characters for internationalization
-                const allowedControlChars = [
-                    0x08, // Backspace
-                    0x09, // Tab
-                    0x0A, // Line Feed (LF)
-                    0x0D, // Carriage Return (CR)
-                    0x1B, // Escape (for ANSI sequences)
-                    0x7F  // Delete
-                ];
-
-                for (let i = 0; i < msg.length; i++) {
-                    const charCode = msg.charCodeAt(i);
-                    
-                    // Allow printable characters (space and above)
-                    if (charCode >= 0x20) {
-                        continue;
-                    }
-                    
-                    // Allow specific control characters
-                    if (allowedControlChars.includes(charCode)) {
-                        continue;
-                    }
-                    
-                    // Reject other control characters that could be malicious
-                    return false;
-                }
-
-                // Additional checks for potentially dangerous patterns
-                // Reject null bytes (often used in injection attacks)
-                if (msg.includes('\0')) {
-                    return false;
-                }
-
-                // Reject suspicious escape sequences that could be used for injection
-                // Allow normal ANSI sequences but reject potentially dangerous ones
-                if (msg.includes('\x1b]')) { // OSC (Operating System Command) sequences
-                    return false;
-                }
-                if (msg.includes('\x1b[>')) { // Some potentially dangerous escape sequences
-                    return false;
-                }
-
-                return true;
-            };
         } else {
             throw "Unknown purpose";
         }

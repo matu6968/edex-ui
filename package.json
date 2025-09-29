@@ -20,7 +20,7 @@
     "prebuild-linux": "rsync -a --info=progress2 src/ prebuild-src --exclude node_modules && node prebuild-minify.js && cd prebuild-src && npm install",
     "prebuild-darwin": "rsync -a src/ prebuild-src --exclude node_modules && node prebuild-minify.js && cd prebuild-src && npm install",
     "prebuild-windows": "mkdir prebuild-src && xcopy src\\* prebuild-src\\ /E /C /Q /Y && node prebuild-minify.js && cd prebuild-src && npm install",
-    "build-linux": "./node_modules/.bin/electron-builder build -l --x64 --arm64 --armv7l",
+    "build-linux": "./node_modules/.bin/electron-builder build -l --x64 --arm64 --armv7l --arm64",
     "build-darwin": "./node_modules/.bin/electron-builder build -m",
     "build-windows": "node_modules\\.bin\\electron-builder build -w",
     "postbuild-linux": "rm -R prebuild-src",
@@ -77,7 +77,8 @@
         {
           "target": "dmg",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
@@ -93,7 +94,8 @@
           "target": "nsis",
           "arch": [
             "x64",
-            "ia32"
+            "ia32",
+            "arm64"
           ]
         }
       ],
@@ -109,9 +111,9 @@
   "dependencies": {
     "@electron/rebuild": "^4.0.1",
     "clean-css": "^5.3.3",
-    "electron": "^38.1.0",
+    "electron": "^38.2.0",
     "electron-builder": "^26.0.12",
-    "https-proxy-agent": "^7.0.5",
+    "https-proxy-agent": "^7.0.6",
     "mime-types": "^3.0.1",
     "node-abi": "^4.14.0",
     "node-json-minify": "^3.0.0",
