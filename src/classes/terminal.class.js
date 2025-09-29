@@ -179,13 +179,42 @@ class Terminal {
             let sockHost = opts.host || "127.0.0.1";
             let sockPort = this.port;
 
-            this.socket = new WebSocket("ws://"+sockHost+":"+sockPort);
+            // Wait for terminal ID from server (optional for connection)
+            this._terminalId = null;
+
+            // Listen for terminal ID from server (optional)
+            const idHandler = (e, ...args) => {
+                if (args[0] === "Terminal ID") {
+                    this._terminalId = args[1];
+                    this.Ipc.removeListener("terminal_channel-"+this.port, idHandler);
+                }
+            };
+            this.Ipc.on("terminal_channel-"+this.port, idHandler);
+
+            // Request terminal ID from server (optional)
+            this.Ipc.send("terminal_channel-"+this.port, "Request terminal ID");
+
+            // Create WebSocket connection immediately (no waiting for ID)
+            const wsUrl = "ws://"+sockHost+":"+sockPort;
+
+            // Optionally use terminal ID in subprotocol if available
+            const subprotocol = this._terminalId ? [`terminal.${this._terminalId}`] : [];
+
+            console.log("Connecting to WebSocket...");
+            if (this._terminalId) {
+                console.log("Using terminal ID in subprotocol:", this._terminalId);
+            }
+
+            this.socket = new WebSocket(wsUrl, subprotocol);
             this.socket.onopen = () => {
                 let attachAddon = new AttachAddon(this.socket);
                 this.term.loadAddon(attachAddon);
                 this.fit();
             };
-            this.socket.onerror = e => {throw JSON.stringify(e)};
+            this.socket.onerror = e => {
+                console.error("WebSocket error:", e);
+                throw JSON.stringify(e);
+            };
             this.socket.onclose = e => {
                 if (this.onclose) {
                     this.onclose(e);
@@ -505,15 +534,64 @@ class Terminal {
                 this.onclosed(code, signal);
             });
 
+            // Generate a unique terminal ID for this terminal instance
+            this._terminalId = require('crypto').randomBytes(16).toString('hex');
+
+            // Store terminal ID in renderer process for client validation
+            if (this.renderer) {
+                this.renderer.send("terminal_channel-"+this.port, "Terminal ID", this._terminalId);
+            }
+
+            // For additional security, register this terminal ID with the server
+            this._registeredTerminals = new Set([this._terminalId]);
+
             this.wss = new this.Websocket({
                 port: this.port,
                 clientTracking: true,
                 verifyClient: info => {
+                    // Check client limit (existing protection)
                     if (this.wss.clients.length >= 1) {
+                        console.log("WebSocket connection rejected: client limit exceeded");
                         return false;
-                    } else {
-                        return true;
                     }
+
+                    // Validate origin - allow localhost and file:// (Electron) connections
+                    const origin = info.origin || info.req.headers.origin;
+                    const allowedOrigins = [
+                        'http://localhost',
+                        'http://127.0.0.1',
+                        'https://localhost',
+                        'https://127.0.0.1',
+                        'file://'
+                    ];
+
+                    // Check if origin is allowed
+                    const isOriginAllowed = !origin || allowedOrigins.some(allowed =>
+                        origin === allowed || origin.startsWith(allowed)
+                    );
+
+                    if (!isOriginAllowed) {
+                        console.log(`WebSocket connection rejected: invalid origin "${origin}"`);
+                        return false;
+                    }
+
+                    // Additional security: check for terminal ID in subprotocol (if provided)
+                    const subprotocol = info.req.headers['Sec-WebSocket-Protocol'] || '';
+                    console.log("Raw Sec-WebSocket-Protocol header:", subprotocol);
+                    const terminalIdMatch = subprotocol.match(/^terminal\.(.+)$/);
+                    const terminalId = terminalIdMatch ? terminalIdMatch[1] : null;
+
+                    if (terminalId) {
+                        console.log("Received terminal ID via subprotocol:", terminalId);
+                        console.log("Expected terminal ID:", this._terminalId);
+                        if (!this._registeredTerminals.has(terminalId)) {
+                            console.log("WebSocket connection rejected: invalid terminal ID");
+                            return false;
+                        }
+                    }
+
+                    console.log("WebSocket connection accepted from valid origin");
+                    return true;
                 }
             });
             this.Ipc.on("terminal_channel-"+this.port, (e, ...args) => {
@@ -525,6 +603,12 @@ class Terminal {
                         }
                         if (this._disableCWDtracking) {
                             this.renderer.send("terminal_channel-"+this.port, "Fallback cwd", opts.cwd || process.env.PWD);
+                        }
+                        break;
+                    case "Request terminal ID":
+                        // Send terminal ID to renderer
+                        if (this._terminalId) {
+                            this.renderer.send("terminal_channel-"+this.port, "Terminal ID", this._terminalId);
                         }
                         break;
                     case "Resize":
@@ -561,7 +645,29 @@ class Terminal {
                         this.ondisconnected(code, reason);
                     }
                 });
+                // Rate limiting for WebSocket messages
+                ws._messageCount = 0;
+                ws._lastMessageTime = Date.now();
+                ws._rateLimitWindow = 1000; // 1 second window
+                ws._maxMessagesPerWindow = 100; // Max 100 messages per second
+
                 ws.on("message", msg => {
+                    const now = Date.now();
+
+                    // Reset counter if window has passed
+                    if (now - ws._lastMessageTime > ws._rateLimitWindow) {
+                        ws._messageCount = 0;
+                        ws._lastMessageTime = now;
+                    }
+
+                    // Check rate limit
+                    ws._messageCount++;
+                    if (ws._messageCount > ws._maxMessagesPerWindow) {
+                        console.warn("WebSocket rate limit exceeded, closing connection");
+                        ws.close(1008, "Rate limit exceeded");
+                        return;
+                    }
+
                     // Allow all terminal input - the PTY will handle proper terminal protocol
                     // Only basic safety check for extremely long inputs to prevent DoS
                     if (Buffer.isBuffer(msg)) {
@@ -602,6 +708,11 @@ class Terminal {
                 this._closed = true;
                 if (this._tick) {
                     clearInterval(this._tick);
+                }
+                // Clear terminal ID timeout
+                if (this._idTimeout) {
+                    clearTimeout(this._idTimeout);
+                    this._idTimeout = null;
                 }
             };
 
