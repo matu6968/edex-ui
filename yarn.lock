@@ -994,10 +994,10 @@ electron-publish@26.0.11:
     lazy-val "^1.0.5"
     mime "^2.5.2"
 
-electron@^38.2.0:
-  version "38.2.0"
-  resolved "https://registry.npmjs.org/electron/-/electron-38.2.0.tgz"
-  integrity sha512-Cw5Mb+N5NxsG0Hc1qr8I65Kt5APRrbgTtEEn3zTod30UNJRnAE1xbGk/1NOaDn3ODzI/MYn6BzT9T9zreP7xWA==
+electron@^39.2.3:
+  version "39.2.3"
+  resolved "https://registry.yarnpkg.com/electron/-/electron-39.2.3.tgz#33d5b74f6cf91c6c4444424fb068c4d6f8541e6b"
+  integrity sha512-j7k7/bj3cNA29ty54FzEMRUoqirE+RBQPhPFP+XDuM93a1l2WcDPiYumxKWz+iKcXxBJLFdMIAlvtLTB/RfCkg==
   dependencies:
     "@electron/get" "^2.0.0"
     "@types/node" "^22.7.7"
