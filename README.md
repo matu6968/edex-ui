@@ -17,6 +17,7 @@
   <a href="https://github.com/matu6968/edex-ui/releases/download/v2.3.2/eDEX-UI-Linux-arm64-AppImage" target="_blank"><img alt="undefined" src="https://badgen.net/badge/Download/Linux ARM64/?color=orange&icon=terminal&label"></a>
   <a href="https://github.com/matu6968/edex-ui/releases/download/v2.3.2/eDEX-UI-Linux-arm64-AppImage" target="_blank"><img alt="undefined" src="https://badgen.net/badge/Download/Linux ARMv7/?color=orange&icon=terminal&label"></a>
   <br>
+  <strong><i>(Project archived jan. 29th 2026)</i></strong>
   <br><br><br>
 </p>
 
@@ -87,6 +88,8 @@ Yes! You can now completely disable the keyboard and/or filesystem display throu
 eDEX now supports filesystem tracking on all platforms including Windows! The filesystem browser will automatically follow your current working directory as you navigate through folders in the terminal. On Linux and macOS, this is achieved by monitoring the process working directory. On Windows, eDEX intelligently parses terminal output to detect directory changes from PowerShell and Command Prompt. If tracking still fails in rare cases, the file browser will fall back to a "detached" mode where you can still browse files & directories and click on files to input their path in the terminal.
 #### Can this run on a Raspberry Pi / ARM device?
 We provide prebuilt arm64 and armv7 builds as a part of the revival of the project.
+#### Is this repo actively maintained?
+Since eDEX-UI is neice and isn't worth maintaining it for me, this project has been archived.
 #### Why is WebGL acceleration on the terminal disabled?
 WebGL acceleration on the terminal is disabled because it's causing blue tint issues which in itself is caused by transparency issues (likely due to changing API's in xterm 5.x releases on how themes are handled). For now it is using software rendering instead which is slower but works.
 #### Why isn't geolocation working?
